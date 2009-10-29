@@ -214,7 +214,7 @@ be sure to include the default function in the list.")
            (setq autopair-emulation-alist (list (cons t map))))
          
          (setq autopair-action nil)
-         (add-hook 'emulation-mode-map-alists 'autopair-emulation-alist nil 'local)
+         (add-hook (make-local-variable 'emulation-mode-map-alists) 'autopair-emulation-alist nil 'local)
          (add-hook 'post-command-hook 'autopair-post-command-handler 'append 'local))
         (t
          (remove-hook 'emulation-mode-map-alists 'autopair-emulation-alist        'local)
