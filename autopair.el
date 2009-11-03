@@ -4,7 +4,11 @@
 
 ;; Author: Joao Tavora <joaotavora [at] gmail.com>
 ;; Keywords: convenience, emulations
+;; X-URL: http://autopair.googlecode.com
+;; URL: http://autopair.googlecode.com
+;; EmacsWiki: AutoPairs
 ;; Version: 0.2
+;; Revision: $Rev$ ($LastChangedDate$)
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -127,7 +131,7 @@
 (defvar autopair-skip-criteria 'help-balance
   "If non-nil, be more criterious when skipping closing brackets.")
 
-(defvar autopair-emulation-alist (cons t (make-sparse-keymap))
+(defvar autopair-emulation-alist nil
   "A dinamic keymap for autopair set mostly from the current
   syntax table.")
 (make-variable-buffer-local 'autopair-emulation-alist)
@@ -214,10 +218,11 @@ be sure to include the default function in the list.")
            (setq autopair-emulation-alist (list (cons t map))))
          
          (setq autopair-action nil)
-         (add-hook (make-local-variable 'emulation-mode-map-alists) 'autopair-emulation-alist nil 'local)
+         (add-hook 'emulation-mode-map-alists 'autopair-emulation-alist nil)
          (add-hook 'post-command-hook 'autopair-post-command-handler 'append 'local))
         (t
-         (remove-hook 'emulation-mode-map-alists 'autopair-emulation-alist        'local)
+         (setq autopair-emulation-alist nil)
+         (remove-hook 'emulation-mode-map-alists 'autopair-emulation-alist)
          (remove-hook 'post-command-hook         'autopair-post-command-handler 'local))))
 
 ;; useful functions, mostly decision logic
