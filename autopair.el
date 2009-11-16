@@ -227,6 +227,15 @@ be sure to include the default function in the list.")
 
 ;; useful functions, mostly decision logic
 ;;
+
+(defun autopair-syntax-ppss ()
+  (let ((quick-syntax-info (syntax-ppss)))
+    (cond (;; inside a string, recalculate
+           (nth 3 quick-syntax-info)
+           (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point)))
+          (t
+           quick-syntax-info))))
+
 (defun autopair-fallback (&optional fallback-keys)
   (let ((autopair-emulation-alist nil)
         (command (or (key-binding (this-single-command-keys))
@@ -247,7 +256,7 @@ original command as if autopair didn't exist"
 
 (defun autopair-skip-p ()
   (interactive)
-  (let ((syntax-info (syntax-ppss)))
+  (let ((syntax-info (autopair-syntax-ppss)))
     (and (eq (char-after (point)) last-input-event)
          (cond ((eq autopair-skip-criteria 'help-balance)
                 (save-excursion
@@ -262,41 +271,26 @@ original command as if autopair didn't exist"
                (t
                 t)))))
 
-(defun autopair-following-quote-p (&optional quick-syntax-info)
-  (let ((quick-syntax-info (or quick-syntax-info
-                               (syntax-ppss))))
-    (or (and (nth 3 quick-syntax-info) ;; in a string, (nth 5
-                                       ;; quick-syntax-info) is not
-                                       ;; reliable
-             (nth 5 (parse-partial-sexp (nth 8 quick-syntax-info)
-                                        (point))))
-        (nth 5 quick-syntax-info)))) ;; following a quote
+(defun autopair-following-quote-p (syntax-info)
+  (nth 5 syntax-info))
 
-(defun autopair-in-comment-disabled-p (&optional quick-syntax-info)
-  (let ((quick-syntax-info (or quick-syntax-info
-                               (syntax-ppss))))
-    (and (nth 4 quick-syntax-info) ;; in a comment
-         (member last-input-event
-                 (getf autopair-dont-pair :comment)))))
+(defun autopair-in-comment-disabled-p (syntax-info)
+  "Check disable of `last-input-event' inside comments."
+  ;; `last-input-event' inside a comment.
+  (and (nth 4 syntax-info) ;; in a comment
+       (member last-input-event
+               (getf autopair-dont-pair :comment))))
 
-(defun autopair-in-string-disabled-p (&optional quick-syntax-info)
-  (let ((quick-syntax-info (or quick-syntax-info
-                               (syntax-ppss))))
-    (and (nth 3 quick-syntax-info) ;; in a string
-         (member last-input-event
-                 (getf autopair-dont-pair :string)))))
+(defun autopair-in-string-disabled-p (syntax-info)
+  "Check disable of `last-input-event' inside strings."
+  (and (nth 3 syntax-info) ;; in a string
+       (member last-input-event
+               (getf autopair-dont-pair :string))))
 
-(defun autopair-up-list (quick-syntax-info)
-  "Determines if we can up-list from the current position.
-
-Much like `up-list' but recalculates the current parenthesis
-depth if it turns out we're in a string... "
+(defun autopair-up-list (syntax-info)
+  "Determines if we can up-list from the current position."
   (condition-case nil
-      (let* ((inside-string (nth 3 quick-syntax-info))
-             (syntax-info (or (and inside-string 
-                                   (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point)))
-                              quick-syntax-info))
-             (howmany (car syntax-info)))
+      (let ((howmany (car syntax-info)))
         (while (/= howmany 0)
           (goto-char (scan-lists (point) 1 1))
           (decf howmany))
@@ -304,11 +298,11 @@ depth if it turns out we're in a string... "
     (error nil)))
 
 (defun autopair-pair-p ()
-  (let ((syntax-info (syntax-ppss)))
+  (let ((syntax-info (autopair-syntax-ppss)))
     (unless (or (autopair-in-comment-disabled-p syntax-info)
                 (autopair-in-string-disabled-p syntax-info))
       (cond ((eq autopair-pair-criteria 'help-balance)
-             (and (not (autopair-following-quote-p))
+             (and (not (autopair-following-quote-p syntax-info))
                   (save-excursion
                     (autopair-up-list syntax-info)
                     (condition-case err
@@ -316,9 +310,12 @@ depth if it turns out we're in a string... "
                           (forward-list (point-max))
                           t)
                       (error
-                       ;; the following `eq' should signal that this is a
-                       ;; scan-error of type is "... ends prematurily"
-                       (eq (fourth err) (point-max)))))))
+                       ;; the following `eq' should signal that this
+                       ;; is a scan-error of type is "... ends
+                       ;; prematurely". In this case we decide to pair
+                       (not (string-match "prematurely" (second err)))
+                       ;; (eq (fourth err) (point-max))
+                       )))))
             ((eq autopair-pair-criteria 'always)
              t)
             (t
@@ -340,7 +337,7 @@ depth if it turns out we're in a string... "
 ;; 
 (defun autopair-insert-or-skip-quote ()
   (interactive)
-  (let* ((syntax-info (syntax-ppss))
+  (let* ((syntax-info (autopair-syntax-ppss))
          ;; inside-string may the quote character itself or t if this is a "generically terminated string"
          (inside-string (nth 3 syntax-info))) 
     (unless (autopair-following-quote-p syntax-info)
@@ -360,7 +357,7 @@ depth if it turns out we're in a string... "
                    (and (nth 4 syntax-info) 
                         (eq last-input-event (char-after (1- (point)))))))
              (setq autopair-action (list 'skip-quote last-input-event (point))))
-            (;; decides whether to pair, i.e don't pair quote if...
+            (;; decides whether to pair, i.e do *not* pair the quote if...
              ;; 
              (not
               (or
@@ -370,7 +367,9 @@ depth if it turns out we're in a string... "
                (eq last-input-event inside-string)
                ;; comment-disabled is true here
                (autopair-in-comment-disabled-p syntax-info)
-               ;; string-disable is true here
+               ;; string-disable is true here, this last one is only
+               ;; useful if we're in a string terminated by a
+               ;; character other that `last-input-event'.
                (autopair-in-string-disabled-p syntax-info)))
              (setq autopair-action (list 'insert-quote last-input-event (point))))))
     (autopair-fallback)))
@@ -469,6 +468,29 @@ depth if it turns out we're in a string... "
 
 ;; mini test-framework for the decision making predicates
 ;;
+(defvar autopair-tests)
+
+(setq autopair-tests (list (list " (())  "          ; contents
+                                 "((((((("          ; input
+                                 #'autopair-pair-p  ; predicate
+                                 "yyyyyyy")         ; expected
+                           (list " ((()) "
+                                 "((((((("
+                                 #'autopair-pair-p
+                                 "yyyyyyy")
+                           (list " (())) "
+                                 "((((((("
+                                 #'autopair-pair-p
+                                 "------y")
+                           (list " (())  "
+                                 "---))--"
+                                 #'autopair-skip-p
+                                 "---yy--")
+                           (list " (())) "
+                                 "---)))-"
+                                 #'autopair-skip-p
+                                 "---yyy-")))
+
 (defun autopair-test (buffer-contents
                       input
                       predicate)
@@ -487,27 +509,8 @@ depth if it turns out we're in a string... "
   (interactive)
   (let ((passed 0)
         (failed 0))
-    (dolist (spec (list (list " (())  "          ; contents
-                              "((((((("          ; input
-                              #'autopair-pair-p  ; predicate
-                              "yyyyyyy")         ; expected
-                        (list " ((()) "
-                              "((((((("
-                              #'autopair-pair-p
-                              "yyyyyyy")
-                        (list " (())) "
-                              "((((((("
-                              #'autopair-pair-p
-                              "------y")
-                        (list " (())  "
-                              "---))--"
-                              #'autopair-skip-p
-                              "---yy--")
-                        (list " (())) "
-                              "---)))-"
-                              #'autopair-skip-p
-                              "---yyyy")))
-      (with-output-to-temp-buffer "*autopair-tests*"
+    (with-output-to-temp-buffer "*autopair-tests*"
+      (dolist (spec autopair-tests)
         (condition-case err
             (progn (assert (equal
                             (condition-case nil
@@ -517,7 +520,7 @@ depth if it turns out we're in a string... "
                               (error "error"))
                             (fourth spec))
                            'show-args
-                           (format "test \"%s\" for input %s returned %%s instead of %s"
+                           (format "test \"%s\" for input %s returned %%s instead of %s\n"
                                    (first spec)
                                    (second spec)
                                    (fourth spec)))
@@ -525,11 +528,11 @@ depth if it turns out we're in a string... "
           (error (progn
                    (princ (cadr err))
                    (incf failed))))
-        (princ (format "\n\n%s tests total, %s pass, %s failures"
-                    (+ passed failed)
-                    passed
-                    failed))))))
-
+        )
+      (princ (format "\n\n%s tests total, %s pass, %s failures"
+                     (+ passed failed)
+                     passed
+                     failed)))))
 
 
 (provide 'autopair)
