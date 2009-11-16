@@ -260,7 +260,7 @@ original command as if autopair didn't exist"
     (and (eq (char-after (point)) last-input-event)
          (cond ((eq autopair-skip-criteria 'help-balance)
                 (save-excursion
-                  (autopair-up-list syntax-info)))
+                  (autopair-up-list syntax-info last-input-event)))
                ((eq autopair-skip-criteria 'need-opening)
                 (save-excursion
                   (condition-case err
@@ -287,11 +287,21 @@ original command as if autopair didn't exist"
        (member last-input-event
                (getf autopair-dont-pair :string))))
 
-(defun autopair-up-list (syntax-info)
-  "Determines if we can up-list from the current position."
+(defun autopair-up-list (syntax-info &optional input-event)
+  "Try to uplist as most as reasonably possible.
+
+Return nil if something prevented up-listing. If inside nested
+lists of mixed parethesis types, finding a matching parenthesis
+of a mixed-type is considered OK, and uplisting stops there."
   (condition-case nil
       (let ((howmany (car syntax-info)))
-        (while (/= howmany 0)
+        (while (and (/= howmany 0)
+                    (or (null input-event)
+                        (condition-case err
+                            (progn
+                              (scan-sexps (point) (point-max))
+                              (error err))
+                          (error (eq input-event (char-before (third err)))))))
           (goto-char (scan-lists (point) 1 1))
           (decf howmany))
         (point))
@@ -307,13 +317,24 @@ original command as if autopair didn't exist"
                     (autopair-up-list syntax-info)
                     (condition-case err
                         (progn
-                          (forward-list (point-max))
+                          (forward-sexp (point-max))
                           t)
                       (error
-                       ;; the following `eq' should signal that this
-                       ;; is a scan-error of type is "... ends
-                       ;; prematurely". In this case we decide to pair
-                       (not (string-match "prematurely" (second err)))
+                       ;; if `forward-sexp' returned an error,
+                       ;; typically we don't want to autopair,
+                       ;; unless...
+                       ;;
+                       ;; 1. `forward-sexp' stopped at a parenthesis
+                       ;;    of a different type than
+                       ;;    `last-input-event'
+                       ;;    
+                       ;; 2. The error is of type "containing
+                       ;;    expression ends prematurely", which means
+                       ;;    we're in the "too-many-openings"
+                       ;;    situation and thus want to autopair.
+                       (or (not (eq (autopair-find-pair last-input-event)
+                                    (char-after (third err))))
+                           (not (string-match "prematurely" (second err))))
                        ;; (eq (fourth err) (point-max))
                        )))))
             ((eq autopair-pair-criteria 'always)
@@ -489,7 +510,17 @@ original command as if autopair didn't exist"
                            (list " (())) "
                                  "---)))-"
                                  #'autopair-skip-p
-                                 "---yyy-")))
+                                 "---yyy-")
+                           ;; a mixed paren situations
+                           (list "  ()]  "
+                                 "-(-----"
+                                 #'autopair-pair-p
+                                 "-y-----")
+                           (list " [([())  "
+                                 "-----))--"
+                                 #'autopair-skip-p
+                                 "-----y---")
+                           ))
 
 (defun autopair-test (buffer-contents
                       input
@@ -502,7 +533,8 @@ original command as if autopair didn't exist"
       (dotimes (i size)
         (goto-char (1+ i))
         (let ((last-input-event (aref input i)))
-          (when (funcall predicate) (aset result i ?y))))
+          (when (and (not (eq last-input-event ?-))
+                     (funcall predicate) (aset result i ?y)))))
       result)))
 
 (defun autopair-run-tests ()
