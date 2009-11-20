@@ -655,26 +655,26 @@ of a mixed-type is considered OK, and uplisting stops there."
 
 (setq autopair-extra-tests (list
                             ;; test the extra pairs
-                            ;; (list "       "
-                            ;;       "-----`-"
-                            ;;       #'autopair-extra-pair-p
-                            ;;       "-----y-"
-                            ;;       '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
-                            ;; (list "\"     \""
-                            ;;       "-----`-"
-                            ;;       #'autopair-extra-pair-p
-                            ;;       "-----y-"
-                            ;;       '((autopair-extra-pairs '(:string ((?` . ?'))))))
+                            (list "       "
+                                  "-----`-"
+                                  #'autopair-extra-pair-p
+                                  "-----y-"
+                                  '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
+                            (list "\"     \""
+                                  "-----`-"
+                                  #'autopair-extra-pair-p
+                                  "-----y-"
+                                  '((autopair-extra-pairs '(:string ((?` . ?'))))))
                             (list "   ` ' "
                                   "-----'-"
                                   #'autopair-extra-skip-p
                                   "-----y-"
                                   '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
-                            ;; (list "\"     \""
-                            ;;       "-----`-"
-                            ;;       #'autopair-extra-skip-p
-                            ;;       "-----y-"
-                            ;;       '((autopair-extra-pairs '(:string ((?` . ?'))))))
+                            (list "  \"   \""
+                                  "-`---`-"
+                                  #'autopair-extra-pair-p
+                                  "-----y-"
+                                  '((autopair-extra-pairs '(:string ((?` . ?'))))))
                             ))
 
 (defun autopair-test (buffer-contents
@@ -697,7 +697,8 @@ of a mixed-type is considered OK, and uplisting stops there."
   (let ((passed 0)
         (failed 0))
     (with-output-to-temp-buffer "*autopair-tests*"
-      (dolist (spec (or suite autopair-tests))
+      (dolist (spec (or suite (append autopair-tests
+                                      autopair-extra-tests)))
         (condition-case err
             (progn (assert (equal
                             (condition-case nil\
