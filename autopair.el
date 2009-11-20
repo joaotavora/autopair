@@ -580,7 +580,7 @@ of a mixed-type is considered OK, and uplisting stops there."
          (and (eq 'backspace action)
               (eq pair (char-after (point))))
          (delete-char 1))
-        (;; autodelete closing delimiter
+        (;; opens an extra line after point, then indents
          (and (eq 'newline action)
               (eq pair (char-after (point))))
          (open-line 1)
