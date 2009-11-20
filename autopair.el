@@ -31,6 +31,7 @@
 ;; * Opening braces/quotes are autopaired;
 ;; * Closing braces/quotes are autoskipped;
 ;; * Backspacing an opening brace/quote autodeletes its adjacent pair.
+;; * A newline entered between a brace pair opens an extra line
 ;;
 ;; Autopair deduces from the current syntax table which characters to
 ;; pair, skip or delete.
@@ -111,8 +112,16 @@
 ;;                     (list #'autopair-default-handle-action
 ;;                           #'autopair-python-triple-quote-action))))
 ;;
-;; `autopair-extra-pair' lets you define extra pairing and skipping
-;; behaviour for pairs not programmed into the syntax table. (Work-in-progress)
+;; `autopair-extra-pairs' lets you define extra pairing and skipping
+;; behaviour for pairs not programmed into the syntax table. Watch
+;; out, this is work-in-progress, a little unstable and does not help
+;; balancing at all. To have '<' and '>' pair in c++-mode buffers, but
+;; only in code, use:
+;;
+;; (add-hook 'c++-mode-hook
+;;           #'(lambda ()
+;;               (push '(?< . ?>)
+;;                     (getf autopair-extra-pairs :code))))
 ;;                      
 ;;; Bugs:
 ;;
@@ -191,9 +200,10 @@ characters and TYPE can be one of:
 (defvar autopair-action nil
   "Autopair action decided on by last interactive autopair command, or nil.
 
-ACTION is one of `opening',`insert-quote' or `skip-quote' or
-`backspace'. PAIR is an element of `autopair-pairs'. POS-BEFORE
-is value of point before action command took place .")
+ACTION is one of `opening', `insert-quote', `skip-quote',
+`backspace' or `newline'. PAIR is an element of
+`autopair-pairs'. POS-BEFORE is value of point before action
+command took place .")
 (make-variable-buffer-local 'autopair-action)
 
 
@@ -220,13 +230,14 @@ be sure to include the default function in the list.")
   "Automagically pair braces and quotes like in TextMate."
   nil " pair" nil
   (cond (autopair-mode
-         ;; Setup the dynamic emulation keymap
+         ;; Setup the dynamic emulation keymap 
          ;;
          (let ((map (make-sparse-keymap)))
            (define-key map [remap delete-backward-char] 'autopair-backspace)
            (define-key map [remap backward-delete-char-untabify] 'autopair-backspace)
            (define-key map (kbd "<backspace>") 'autopair-backspace)
            (define-key map [backspace] 'autopair-backspace)
+           (define-key map (kbd "RET") 'autopair-newline)
            (dotimes (char 256) ;; only searches the first 256 chars, TODO: is this enough/toomuch/stupid?
              (unless (member char
                              (getf autopair-dont-pair :never))
@@ -240,6 +251,11 @@ be sure to include the default function in the list.")
                         (define-key map (string pair) 'autopair-skip-close-maybe))
                        ((eq class (car (string-to-syntax "\"")))
                         (define-key map (string char) 'autopair-insert-or-skip-quote))))))
+           (dolist (pairs-list (remove-if-not #'listp autopair-extra-pairs))
+             (dolist (pair pairs-list)
+               (define-key map (string (car pair)) 'autopair-extra-insert-opening)
+               (define-key map (string (cdr pair)) 'autopair-extra-skip-close-maybe)))
+           
            (setq autopair-emulation-alist (list (cons t map))))
          
          (setq autopair-action nil)
@@ -306,8 +322,10 @@ original command as if autopair didn't exist"
 (defun autopair-extra-skip-p ()
   (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
          (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym)))
-    (and (some #'(lambda (sym)
+         (where-sym (cdr syntax-info-and-where-sym))
+         (orig-point (point)))
+    (and (eq (char-after (point)) last-input-event)
+         (some #'(lambda (sym)
                    (autopair-exception-p where-sym sym autopair-extra-pairs #'cdr))
                '(:comment :string :code :everywhere))
          (save-excursion
@@ -316,7 +334,7 @@ original command as if autopair didn't exist"
              (error
               (goto-char (third err))))
            (search-forward (make-string 1 (autopair-find-pair last-input-event 'by-closing-delim))
-                           (point)
+                           orig-point
                            'noerror)))))
   
 (defun autopair-following-quote-p (syntax-info)
@@ -398,14 +416,24 @@ of a mixed-type is considered OK, and uplisting stops there."
           '(:everywhere :comment :string :code))))
 
 (defun autopair-find-pair (&optional delim by-closing-delim-p)
-  (let ((syntax-entry (aref (syntax-table) (or delim
-                                               last-input-event))))
-    (cond ((eq (syntax-class syntax-entry) (car (string-to-syntax "(")))
+  (setq delim (or delim last-input-event))
+  (let ((syntax-entry (aref (syntax-table) delim)))
+    (cond ((and (eq (syntax-class syntax-entry) (car (string-to-syntax "(")))
+                (not by-closing-delim-p))
            (cdr syntax-entry))
           ((eq (syntax-class syntax-entry) (car (string-to-syntax "\"")))
            delim)
-          (t
-           nil))))
+          ((and (eq (syntax-class syntax-entry) (car (string-to-syntax ")")))
+                by-closing-delim-p)
+           (cdr syntax-entry))
+          (autopair-extra-pairs
+           (some #'(lambda (pair-list)
+                     (some #'(lambda (pair)
+                               (if by-closing-delim-p
+                                   (when (eq (cdr pair) delim) (car pair))
+                                 (when (eq (car pair) delim) (cdr pair))))
+                           pair-list))
+                 (remove-if-not #'listp autopair-extra-pairs))))))
 
 
 ;; interactive
@@ -432,7 +460,9 @@ of a mixed-type is considered OK, and uplisting stops there."
                    ;; situation (the inside-string criteria does not
                    ;; work here...)
                    (and (nth 4 syntax-info) 
-                        (eq last-input-event (char-after (1- (point)))))))
+                        (condition-case nil
+                            (eq last-input-event (char-after (scan-sexps (1+ (point)) -1)))
+                          (error nil)))))
              (setq autopair-action (list 'skip-quote last-input-event (point))))
             (;; decides whether to pair, i.e do *not* pair the quote if...
              ;; 
@@ -465,6 +495,15 @@ of a mixed-type is considered OK, and uplisting stops there."
      '(concat "Insert opening delimiter and possibly automatically close it.\n\n"
               (autopair-document-bindings)))
 
+(defun autopair-extra-insert-opening ()
+  (interactive)
+  (when (autopair-extra-pair-p)
+    (setq autopair-action (list 'opening (autopair-find-pair) (point))))
+  (autopair-fallback))
+(put 'autopair-extra-insert-opening 'function-documentation
+     '(concat "Insert (an extra) opening delimiter and possibly automatically close it.\n\n"
+              (autopair-document-bindings)))
+
 (defun autopair-skip-close-maybe ()
   (interactive)
   (when (autopair-skip-p)
@@ -474,6 +513,15 @@ of a mixed-type is considered OK, and uplisting stops there."
      '(concat "Insert or possibly skip over a closing delimiter.\n\n"
                (autopair-document-bindings)))
 
+(defun autopair-extra-skip-close-maybe ()
+  (interactive)
+  (when (autopair-extra-skip-p)
+    (setq autopair-action (list 'closing last-input-event (point))))
+  (autopair-fallback))
+(put 'autopair-extra-skip-p 'function-documentation
+     '(concat "Insert or possibly skip over a (and extra) closing delimiter.\n\n"
+              (autopair-document-bindings)))
+
 (defun autopair-backspace ()
   (interactive)
     (when (char-before)
@@ -482,6 +530,18 @@ of a mixed-type is considered OK, and uplisting stops there."
 (put 'autopair-backspace 'function-documentation
      '(concat "Possibly delete a pair of paired delimiters.\n\n"
               (autopair-document-bindings (kbd "DEL"))))
+
+(defun autopair-newline ()
+  (interactive)
+  (let ((pair (autopair-find-pair (char-before))))
+    (when (eq (char-after) pair)
+      (setq autopair-action (list 'newline pair (point))))
+    (autopair-fallback (kbd "RET"))))
+(put 'autopair-backspace 'function-documentation
+     '(concat "Possibly insert two newlines and place point after the first, indented.\n\n"
+              (autopair-document-bindings (kbd "RET"))))
+
+
 
 ;; post-command-hook stuff
 ;;
@@ -519,7 +579,17 @@ of a mixed-type is considered OK, and uplisting stops there."
         (;; autodelete closing delimiter
          (and (eq 'backspace action)
               (eq pair (char-after (point))))
-         (delete-char 1))))
+         (delete-char 1))
+        (;; autodelete closing delimiter
+         (and (eq 'newline action)
+              (eq pair (char-after (point))))
+         (open-line 1)
+         (indent-according-to-mode)
+         (when (or (and (boundp 'global-hl-line-mode)
+                        global-hl-line-mode)
+                   (and (boundp 'hl-line-mode)
+                        hl-line-mode))
+           (hl-line-unhighlight) (hl-line-highlight)))))
 
 
 ;; example python triple quote helper for
