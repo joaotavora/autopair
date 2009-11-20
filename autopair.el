@@ -27,7 +27,7 @@
 ;;
 ;; Another stab at making braces and quotes pair like in
 ;; TextMate:
-;; 
+;;
 ;; * Opening braces/quotes are autopaired;
 ;; * Closing braces/quotes are autoskipped;
 ;; * Backspacing an opening brace/quote autodeletes its adjacent pair.
@@ -54,7 +54,7 @@
 ;; (add-hook 'c-mode-common-hook #'(lambda () (setq autopair-dont-activate t)))
 ;;
 ;;; Use:
-;; 
+;;
 ;; The extension works by rebinding the braces and quotes keys, but
 ;; can still be minimally intrusive, since the original binding is
 ;; always called as if autopair did not exist.
@@ -122,7 +122,7 @@
 ;;           #'(lambda ()
 ;;               (push '(?< . ?>)
 ;;                     (getf autopair-extra-pairs :code))))
-;;                      
+;;
 ;;; Bugs:
 ;;
 ;; * Quote pairing/skipping inside comments is not perfect...
@@ -221,7 +221,7 @@ be sure to include the default function in the list.")
 
 
 ;; minor mode and global mode
-;; 
+;;
 (define-globalized-minor-mode autopair-global-mode autopair-mode autopair-on)
 
 (defun autopair-on () (unless autopair-dont-activate (autopair-mode 1)))
@@ -230,7 +230,7 @@ be sure to include the default function in the list.")
   "Automagically pair braces and quotes like in TextMate."
   nil " pair" nil
   (cond (autopair-mode
-         ;; Setup the dynamic emulation keymap 
+         ;; Setup the dynamic emulation keymap
          ;;
          (let ((map (make-sparse-keymap)))
            (define-key map [remap delete-backward-char] 'autopair-backspace)
@@ -238,7 +238,8 @@ be sure to include the default function in the list.")
            (define-key map (kbd "<backspace>") 'autopair-backspace)
            (define-key map [backspace] 'autopair-backspace)
            (define-key map (kbd "RET") 'autopair-newline)
-           (dotimes (char 256) ;; only searches the first 256 chars, TODO: is this enough/toomuch/stupid?
+           (dotimes (char 256) ;; only searches the first 256 chars,
+                               ;; TODO: is this enough/toomuch/stupid?
              (unless (member char
                              (getf autopair-dont-pair :never))
                (let* ((syntax-entry (aref (syntax-table) char))
@@ -251,13 +252,14 @@ be sure to include the default function in the list.")
                         (define-key map (string pair) 'autopair-skip-close-maybe))
                        ((eq class (car (string-to-syntax "\"")))
                         (define-key map (string char) 'autopair-insert-or-skip-quote))))))
+           ;; read `autopair-extra-pairs'
            (dolist (pairs-list (remove-if-not #'listp autopair-extra-pairs))
              (dolist (pair pairs-list)
                (define-key map (string (car pair)) 'autopair-extra-insert-opening)
                (define-key map (string (cdr pair)) 'autopair-extra-skip-close-maybe)))
-           
+
            (setq autopair-emulation-alist (list (cons t map))))
-         
+
          (setq autopair-action nil)
          (add-hook 'emulation-mode-map-alists 'autopair-emulation-alist nil)
          (add-hook 'post-command-hook 'autopair-post-command-handler 'append 'local))
@@ -266,9 +268,8 @@ be sure to include the default function in the list.")
          (remove-hook 'emulation-mode-map-alists 'autopair-emulation-alist)
          (remove-hook 'post-command-hook         'autopair-post-command-handler 'local))))
 
-;; useful functions, mostly decision logic
+;; helper functions
 ;;
-
 (defun autopair-syntax-ppss ()
   (let ((quick-syntax-info (syntax-ppss)))
 
@@ -283,6 +284,26 @@ be sure to include the default function in the list.")
            (cons quick-syntax-info
                  :code)))))
 
+(defun autopair-find-pair (&optional delim by-closing-delim-p)
+  (setq delim (or delim last-input-event))
+  (let ((syntax-entry (aref (syntax-table) delim)))
+    (cond ((and (eq (syntax-class syntax-entry) (car (string-to-syntax "(")))
+                (not by-closing-delim-p))
+           (cdr syntax-entry))
+          ((eq (syntax-class syntax-entry) (car (string-to-syntax "\"")))
+           delim)
+          ((and (eq (syntax-class syntax-entry) (car (string-to-syntax ")")))
+                by-closing-delim-p)
+           (cdr syntax-entry))
+          (autopair-extra-pairs
+           (some #'(lambda (pair-list)
+                     (some #'(lambda (pair)
+                               (if by-closing-delim-p
+                                   (when (eq (cdr pair) delim) (car pair))
+                                 (when (eq (car pair) delim) (cdr pair))))
+                           pair-list))
+                 (remove-if-not #'listp autopair-extra-pairs))))))
+
 (defun autopair-fallback (&optional fallback-keys)
   (let ((autopair-emulation-alist nil)
         (command (or (key-binding (this-single-command-keys))
@@ -290,7 +311,7 @@ be sure to include the default function in the list.")
     (call-interactively command)))
 
 (defun autopair-document-bindings (&optional fallback-keys)
-  (concat 
+  (concat
    "Works by scheduling possible autopair behaviour, then calls
 original command as if autopair didn't exist"
    (when (eq this-command 'describe-key)
@@ -301,48 +322,12 @@ original command as if autopair didn't exist"
          (format ", which in this case is `%s'" command))))
    "."))
 
-(defun autopair-skip-p ()
-  (interactive)
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym)))
-    (and (eq (char-after (point)) last-input-event)
-         (cond ((eq autopair-skip-criteria 'help-balance)
-                (save-excursion
-                  (autopair-up-list syntax-info last-input-event)))
-               ((eq autopair-skip-criteria 'need-opening)
-                (save-excursion
-                  (condition-case err
-                      (progn
-                        (backward-list)
-                        t)
-                    (error nil))))
-               (t
-                t)))))
-
-(defun autopair-extra-skip-p ()
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym))
-         (orig-point (point)))
-    (and (eq (char-after (point)) last-input-event)
-         (some #'(lambda (sym)
-                   (autopair-exception-p where-sym sym autopair-extra-pairs #'cdr))
-               '(:comment :string :code :everywhere))
-         (save-excursion
-           (condition-case err
-               (backward-sexp (point-max))
-             (error
-              (goto-char (third err))))
-           (search-forward (make-string 1 (autopair-find-pair last-input-event 'by-closing-delim))
-                           orig-point
-                           'noerror)))))
-  
-(defun autopair-following-quote-p (syntax-info)
+(defun autopair-escaped-p (syntax-info)
   (nth 5 syntax-info))
 
 (defun autopair-exception-p (where-sym exception-where-sym blacklist &optional fn)
   (and (or (eq exception-where-sym :everywhere)
-           (eq exception-where-sym where-sym)) 
+           (eq exception-where-sym where-sym))
        (member last-input-event
                (if fn
                    (mapcar fn (getf blacklist exception-where-sym))
@@ -368,86 +353,19 @@ of a mixed-type is considered OK, and uplisting stops there."
         (point))
     (error nil)))
 
-(defun autopair-pair-p ()
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym)))
-    (and (not (some #'(lambda (sym)
-                        (autopair-exception-p where-sym sym autopair-dont-pair))
-                    '(:string :comment :code :everywhere)))
-         (cond ((eq autopair-pair-criteria 'help-balance)
-                (and (not (autopair-following-quote-p syntax-info))
-                     (save-excursion
-                       (autopair-up-list syntax-info)
-                       (condition-case err
-                           (progn
-                             (forward-sexp (point-max))
-                             t)
-                         (error
-                          ;; if `forward-sexp' returned an error,
-                          ;; typically we don't want to autopair,
-                          ;; unless...
-                          ;;
-                          ;; 1. `forward-sexp' stopped at a parenthesis
-                          ;;    of a different type than
-                          ;;    `last-input-event'
-                          ;;    
-                          ;; 2. The error is of type "containing
-                          ;;    expression ends prematurely", which means
-                          ;;    we're in the "too-many-openings"
-                          ;;    situation and thus want to autopair.
-                          (or (not (eq (autopair-find-pair last-input-event)
-                                       (char-after (third err))))
-                              (not (string-match "prematurely" (second err))))
-                          ;; (eq (fourth err) (point-max))
-                          )))))
-               ((eq autopair-pair-criteria 'always)
-                t)
-               (t
-                (not (autopair-following-quote-p))
-                )))))
-
-(defun autopair-extra-pair-p ()
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym)))
-    (some #'(lambda (sym)
-                (autopair-exception-p where-sym sym autopair-extra-pairs #'car))
-          '(:everywhere :comment :string :code))))
-
-(defun autopair-find-pair (&optional delim by-closing-delim-p)
-  (setq delim (or delim last-input-event))
-  (let ((syntax-entry (aref (syntax-table) delim)))
-    (cond ((and (eq (syntax-class syntax-entry) (car (string-to-syntax "(")))
-                (not by-closing-delim-p))
-           (cdr syntax-entry))
-          ((eq (syntax-class syntax-entry) (car (string-to-syntax "\"")))
-           delim)
-          ((and (eq (syntax-class syntax-entry) (car (string-to-syntax ")")))
-                by-closing-delim-p)
-           (cdr syntax-entry))
-          (autopair-extra-pairs
-           (some #'(lambda (pair-list)
-                     (some #'(lambda (pair)
-                               (if by-closing-delim-p
-                                   (when (eq (cdr pair) delim) (car pair))
-                                 (when (eq (car pair) delim) (cdr pair))))
-                           pair-list))
-                 (remove-if-not #'listp autopair-extra-pairs))))))
-
-
-;; interactive
-;; 
+;; interactive commands and their associated predicates
+;;
 (defun autopair-insert-or-skip-quote ()
   (interactive)
   (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
          (syntax-info (car syntax-info-and-where-sym))
          (where-sym (cdr syntax-info-and-where-sym))
-         ;; inside-string may the quote character itself or t if this is a "generically terminated string"
+         ;; inside-string may the quote character itself or t if this
+         ;; is a "generically terminated string"
          (inside-string (eq where-sym :string)))
-    (unless (autopair-following-quote-p syntax-info)
+    (unless (autopair-escaped-p syntax-info)
       (cond (;; decides whether to skip the quote...
-             ;; 
+             ;;
              (and (eq last-input-event (char-after (point)))
                   (or
                    ;; ... if we're already inside a string and the
@@ -456,16 +374,16 @@ of a mixed-type is considered OK, and uplisting stops there."
                    (and inside-string
                         (or (eq inside-string t)
                             (eq last-input-event inside-string)))
-                   ;; ... if we're in a comment in a quote-after-quote
-                   ;; situation (the inside-string criteria does not
-                   ;; work here...)
-                   (and (nth 4 syntax-info) 
+                   ;; ... if we're in a comment and ending a string
+                   ;; (the inside-string criteria does not work
+                   ;; here...)
+                   (and (nth 4 syntax-info)
                         (condition-case nil
                             (eq last-input-event (char-after (scan-sexps (1+ (point)) -1)))
                           (error nil)))))
              (setq autopair-action (list 'skip-quote last-input-event (point))))
             (;; decides whether to pair, i.e do *not* pair the quote if...
-             ;; 
+             ;;
              (not
               (or
                ;; ... inside a generic string
@@ -495,15 +413,6 @@ of a mixed-type is considered OK, and uplisting stops there."
      '(concat "Insert opening delimiter and possibly automatically close it.\n\n"
               (autopair-document-bindings)))
 
-(defun autopair-extra-insert-opening ()
-  (interactive)
-  (when (autopair-extra-pair-p)
-    (setq autopair-action (list 'opening (autopair-find-pair) (point))))
-  (autopair-fallback))
-(put 'autopair-extra-insert-opening 'function-documentation
-     '(concat "Insert (an extra) opening delimiter and possibly automatically close it.\n\n"
-              (autopair-document-bindings)))
-
 (defun autopair-skip-close-maybe ()
   (interactive)
   (when (autopair-skip-p)
@@ -512,15 +421,6 @@ of a mixed-type is considered OK, and uplisting stops there."
 (put 'autopair-skip-close-maybe 'function-documentation
      '(concat "Insert or possibly skip over a closing delimiter.\n\n"
                (autopair-document-bindings)))
-
-(defun autopair-extra-skip-close-maybe ()
-  (interactive)
-  (when (autopair-extra-skip-p)
-    (setq autopair-action (list 'closing last-input-event (point))))
-  (autopair-fallback))
-(put 'autopair-extra-skip-p 'function-documentation
-     '(concat "Insert or possibly skip over a (and extra) closing delimiter.\n\n"
-              (autopair-document-bindings)))
 
 (defun autopair-backspace ()
   (interactive)
@@ -541,6 +441,62 @@ of a mixed-type is considered OK, and uplisting stops there."
      '(concat "Possibly insert two newlines and place point after the first, indented.\n\n"
               (autopair-document-bindings (kbd "RET"))))
 
+(defun autopair-skip-p ()
+  (interactive)
+  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
+         (syntax-info (car syntax-info-and-where-sym)))
+    (and (eq (char-after (point)) last-input-event)
+         (cond ((eq autopair-skip-criteria 'help-balance)
+                (save-excursion
+                  (autopair-up-list syntax-info last-input-event)))
+               ((eq autopair-skip-criteria 'need-opening)
+                (save-excursion
+                  (condition-case err
+                      (progn
+                        (backward-list)
+                        t)
+                    (error nil))))
+               (t
+                t)))))
+
+
+(defun autopair-pair-p ()
+  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
+         (syntax-info (car syntax-info-and-where-sym))
+         (where-sym (cdr syntax-info-and-where-sym)))
+    (and (not (some #'(lambda (sym)
+                        (autopair-exception-p where-sym sym autopair-dont-pair))
+                    '(:string :comment :code :everywhere)))
+         (cond ((eq autopair-pair-criteria 'help-balance)
+                (and (not (autopair-escaped-p syntax-info))
+                     (save-excursion
+                       (autopair-up-list syntax-info)
+                       (condition-case err
+                           (progn
+                             (forward-sexp (point-max))
+                             t)
+                         (error
+                          ;; if `forward-sexp' returned an error,
+                          ;; typically we don't want to autopair,
+                          ;; unless...
+                          ;;
+                          ;; 1. `forward-sexp' stopped at a parenthesis
+                          ;;    of a different type than
+                          ;;    `last-input-event'
+                          ;;
+                          ;; 2. The error is of type "containing
+                          ;;    expression ends prematurely", which means
+                          ;;    we're in the "too-many-openings"
+                          ;;    situation and thus want to autopair.
+                          (or (not (eq (autopair-find-pair last-input-event)
+                                       (char-after (third err))))
+                              (not (string-match "prematurely" (second err))))
+                          ;; (eq (fourth err) (point-max))
+                          )))))
+               ((eq autopair-pair-criteria 'always)
+                t)
+               (t
+                (not (autopair-escaped-p)))))))
 
 
 ;; post-command-hook stuff
@@ -565,7 +521,7 @@ of a mixed-type is considered OK, and uplisting stops there."
          (eq 'opening action)
          (insert pair)
          (backward-char 1))
-        (;; automatically insert closing quote delimiter 
+        (;; automatically insert closing quote delimiter
          (eq 'insert-quote action)
          (insert pair)
          (backward-char 1))
@@ -592,8 +548,8 @@ of a mixed-type is considered OK, and uplisting stops there."
            (hl-line-unhighlight) (hl-line-highlight)))))
 
 
-;; example python triple quote helper for
-
+;; example python triple quote helper
+;;
 (defun autopair-python-triple-quote-action (action pair pos-before)
   (cond ((and (eq 'insert-quote action)
               (>= (point) 3)
@@ -618,10 +574,80 @@ of a mixed-type is considered OK, and uplisting stops there."
         (t
          t)))
 
+;; Commands, predicates and tests for the autopair-extra* feature
+;;
+
+(defun autopair-extra-insert-opening ()
+  (interactive)
+  (when (autopair-extra-pair-p)
+    (setq autopair-action (list 'opening (autopair-find-pair) (point))))
+  (autopair-fallback))
+(put 'autopair-extra-insert-opening 'function-documentation
+     '(concat "Insert (an extra) opening delimiter and possibly automatically close it.\n\n"
+              (autopair-document-bindings)))
+
+(defun autopair-extra-skip-close-maybe ()
+  (interactive)
+  (when (autopair-extra-skip-p)
+    (setq autopair-action (list 'closing last-input-event (point))))
+  (autopair-fallback))
+(put 'autopair-extra-skip-p 'function-documentation
+     '(concat "Insert or possibly skip over a (and extra) closing delimiter.\n\n"
+              (autopair-document-bindings)))
+
+(defun autopair-extra-pair-p ()
+  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
+         (syntax-info (car syntax-info-and-where-sym))
+         (where-sym (cdr syntax-info-and-where-sym)))
+    (some #'(lambda (sym)
+              (autopair-exception-p where-sym sym autopair-extra-pairs #'car))
+          '(:everywhere :comment :string :code))))
+
+(defun autopair-extra-skip-p ()
+  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
+         (syntax-info (car syntax-info-and-where-sym))
+         (where-sym (cdr syntax-info-and-where-sym))
+         (orig-point (point)))
+    (and (eq (char-after (point)) last-input-event)
+         (some #'(lambda (sym)
+                   (autopair-exception-p where-sym sym autopair-extra-pairs #'cdr))
+               '(:comment :string :code :everywhere))
+         (save-excursion
+           (condition-case err
+               (backward-sexp (point-max))
+             (error
+              (goto-char (third err))))
+           (search-forward (make-string 1 (autopair-find-pair last-input-event 'by-closing-delim))
+                           orig-point
+                           'noerror)))))
+
+(defvar autopair-extra-tests nil)
+(setq autopair-extra-tests (list (list "       "
+                                       "-----`-"
+                                       #'autopair-extra-pair-p
+                                       "-----y-"
+                                       '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
+                                 (list "\"     \""
+                                       "-----`-"
+                                       #'autopair-extra-pair-p
+                                       "-----y-"
+                                       '((autopair-extra-pairs '(:string ((?` . ?'))))))
+                                 (list "   ` ' "
+                                       "-----'-"
+                                       #'autopair-extra-skip-p
+                                       "-----y-"
+                                       '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
+                                 (list "  \"   \""
+                                       "-`---`-"
+                                       #'autopair-extra-pair-p
+                                       "-----y-"
+                                       '((autopair-extra-pairs '(:string ((?` . ?'))))))))
+
+
+
 ;; mini test-framework for the decision making predicates
 ;;
 (defvar autopair-tests)
-
 (setq autopair-tests (list (list " (())  "          ; contents
                                  "((((((("          ; input
                                  #'autopair-pair-p  ; predicate
@@ -652,30 +678,6 @@ of a mixed-type is considered OK, and uplisting stops there."
                                  "-----))--"
                                  #'autopair-skip-p
                                  "-----y---")))
-
-(setq autopair-extra-tests (list
-                            ;; test the extra pairs
-                            (list "       "
-                                  "-----`-"
-                                  #'autopair-extra-pair-p
-                                  "-----y-"
-                                  '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
-                            (list "\"     \""
-                                  "-----`-"
-                                  #'autopair-extra-pair-p
-                                  "-----y-"
-                                  '((autopair-extra-pairs '(:string ((?` . ?'))))))
-                            (list "   ` ' "
-                                  "-----'-"
-                                  #'autopair-extra-skip-p
-                                  "-----y-"
-                                  '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
-                            (list "  \"   \""
-                                  "-`---`-"
-                                  #'autopair-extra-pair-p
-                                  "-----y-"
-                                  '((autopair-extra-pairs '(:string ((?` . ?'))))))
-                            ))
 
 (defun autopair-test (buffer-contents
                       input
