@@ -215,9 +215,10 @@ and POS-BEFORE), which are the three elements of the
 `autopair-action' variable, which see.
 
 If non-nil, these functions are called *instead* of the single
-fucntion `autopair-default-handle-action', so use this variable
+function `autopair-default-handle-action', so use this variable
 to specify special behaviour. To also run the default behaviour,
-be sure to include the default function in the list.")
+be sure to include `autopair-default-handle-action' in the
+list.")
 
 
 ;; minor mode and global mode
@@ -237,6 +238,7 @@ be sure to include the default function in the list.")
            (define-key map [remap backward-delete-char-untabify] 'autopair-backspace)
            (define-key map (kbd "<backspace>") 'autopair-backspace)
            (define-key map [backspace] 'autopair-backspace)
+           (define-key map (kbd "DEL") 'autopair-backspace)
            (define-key map (kbd "RET") 'autopair-newline)
            (dotimes (char 256) ;; only searches the first 256 chars,
                                ;; TODO: is this enough/toomuch/stupid?
@@ -312,6 +314,10 @@ be sure to include the default function in the list.")
          (beyond-autopair (or (key-binding (this-single-command-keys))
                               (key-binding fallback-keys))))
     (setq this-original-command beyond-cua)
+    ;; defer to "paredit-mode" if that is installed and running
+    (when (and (featurep 'paredit)
+               (string-match "paredit" (symbol-name beyond-cua)))
+      (setq autopair-action nil))
     (when beyond-autopair
       (call-interactively beyond-autopair))))
 
