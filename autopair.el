@@ -305,10 +305,15 @@ be sure to include the default function in the list.")
                  (remove-if-not #'listp autopair-extra-pairs))))))
 
 (defun autopair-fallback (&optional fallback-keys)
-  (let ((autopair-emulation-alist nil)
-        (command (or (key-binding (this-single-command-keys))
-                     (key-binding fallback-keys))))
-    (call-interactively command)))
+  (let* ((autopair-emulation-alist nil)
+         (beyond-cua (let ((cua--keymap-alist nil))
+                       (or (key-binding (this-single-command-keys))
+                           (key-binding fallback-keys))))
+         (beyond-autopair (or (key-binding (this-single-command-keys))
+                              (key-binding fallback-keys))))
+    (setq this-original-command beyond-cua)
+    (when beyond-autopair
+      (call-interactively beyond-autopair))))
 
 (defun autopair-document-bindings (&optional fallback-keys)
   (concat
@@ -334,11 +339,12 @@ original command as if autopair didn't exist"
                  (getf blacklist exception-where-sym)))))
 
 (defun autopair-up-list (syntax-info &optional input-event)
-  "Try to uplist as most as reasonably possible.
+  "Try to uplist as much as reasonably possible.
 
 Return nil if something prevented up-listing. If inside nested
 lists of mixed parethesis types, finding a matching parenthesis
-of a mixed-type is considered OK, and uplisting stops there."
+of a mixed-type is considered OK (non-nil is returned) and
+uplisting stops there."
   (condition-case nil
       (let ((howmany (car syntax-info)))
         (while (and (/= howmany 0)
@@ -518,7 +524,8 @@ of a mixed-type is considered OK, and uplisting stops there."
 
 (defun autopair-default-handle-action (action pair pos-before)
   (cond (;; automatically insert closing delimiter
-         (eq 'opening action)
+         (and (eq 'opening action)
+              (not (eq pair (char-before))))
          (insert pair)
          (backward-char 1))
         (;; automatically insert closing quote delimiter
@@ -725,6 +732,14 @@ of a mixed-type is considered OK, and uplisting stops there."
                      passed
                      failed)))))
 
+;; Compatibility with delsel.el.
+(put 'autopair-insert-opening 'delete-selection t)
+(put 'autopair-skip-close-maybe 'delete-selection t)
+(put 'autopair-insert-or-skip-quote 'delete-selection t)
+(put 'autopair-extra-insert-opening 'delete-selection t)
+(put 'autopair-extra-skip-close-maybe 'delete-selection t)
+(put 'autopair-backspace 'delete-selection 'supersede)
+(put 'autopair-newline 'delete-selection t)
 
 (provide 'autopair)
 ;;; autopair.el ends here
