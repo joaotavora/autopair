@@ -31,7 +31,7 @@
 ;; * Opening braces/quotes are autopaired;
 ;; * Closing braces/quotes are autoskipped;
 ;; * Backspacing an opening brace/quote autodeletes its adjacent pair.
-;; * A newline entered between a brace pair opens an extra line
+;; * Newline between newly-opened brace pairs open an extra indented line.
 ;;
 ;; Autopair deduces from the current syntax table which characters to
 ;; pair, skip or delete.
@@ -82,7 +82,11 @@
 ;; The table is read like this: in a buffer with 7 characters laid out
 ;; like the first column, an "y" marks points where an opening brace
 ;; is autopaired and in which places would a closing brace be
-;; autoskiped. Quote pairing tries to support similar "intelligence".
+;; autoskipped.
+;;
+;; Quote pairing tries to support similar "intelligence", but is less
+;; deterministic. Some inside-string or inside-comment situations may
+;; not always behave how you intend them to.
 ;;
 ;; For further customization have a look at `autopair-dont-pair',
 ;; `autopair-handle-action-fns' and `autopair-extra-pair'.
@@ -200,6 +204,9 @@ characters and TYPE can be one of:
 (defvar autopair-action nil
   "Autopair action decided on by last interactive autopair command, or nil.
 
+When autopair decides on an action this is a list whose first
+three elements are (ACTION PAIR POS-BEFORE).
+
 ACTION is one of `opening', `insert-quote', `skip-quote',
 `backspace' or `newline'. PAIR is an element of
 `autopair-pairs'. POS-BEFORE is value of point before action
@@ -277,14 +284,17 @@ list.")
 
     (cond (;; inside a string, recalculate
            (nth 3 quick-syntax-info)
-           (cons (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
-                 :string))
+           (list (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
+                 :string
+                 quick-syntax-info))
           ((nth 4 quick-syntax-info)
-           (cons (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
-                 :comment))
+           (list (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
+                 :comment
+                 quick-syntax-info))
           (t
-           (cons quick-syntax-info
-                 :code)))))
+           (list quick-syntax-info
+                 :code
+                 quick-syntax-info)))))
 
 (defun autopair-find-pair (&optional delim by-closing-delim-p)
   (setq delim (or delim last-input-event))
@@ -366,55 +376,74 @@ uplisting stops there."
     (error nil)))
 
 ;; interactive commands and their associated predicates
-;;
+;; 
 (defun autopair-insert-or-skip-quote ()
   (interactive)
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym))
+  (let* ((syntax-triplet (autopair-syntax-ppss))
+         (syntax-info (first syntax-triplet))
+         (where-sym (second syntax-triplet))
+         (orig-info (third syntax-triplet))
          ;; inside-string may the quote character itself or t if this
          ;; is a "generically terminated string"
-         (inside-string (eq where-sym :string)))
-    (unless (autopair-escaped-p syntax-info)
-      (cond (;; decides whether to skip the quote...
-             ;;
-             (and (eq last-input-event (char-after (point)))
-                  (or
-                   ;; ... if we're already inside a string and the
-                   ;; string starts with the character just inserted,
-                   ;; or it's a generically terminated string
-                   (and inside-string
-                        (or (eq inside-string t)
-                            (eq last-input-event inside-string)))
-                   ;; ... if we're in a comment and ending a string
-                   ;; (the inside-string criteria does not work
-                   ;; here...)
-                   (and (nth 4 syntax-info)
-                        (condition-case nil
-                            (eq last-input-event (char-after (scan-sexps (1+ (point)) -1)))
-                          (error nil)))))
-             (setq autopair-action (list 'skip-quote last-input-event (point))))
-            (;; decides whether to pair, i.e do *not* pair the quote if...
-             ;;
-             (not
-              (or
-               ;; ... inside a generic string
-               (eq inside-string t)
-               ;; inside a string terminated by this char
-               (eq last-input-event inside-string)
-               ;; comment-disabled is true here or string-disable is
-               ;; true here this last one is only useful if we're in a
-               ;; string terminated by a character other than
-               ;; `last-input-event'.
-               (some #'(lambda (sym)
-                         (autopair-exception-p where-sym sym autopair-dont-pair))
-                     '(:comment :string))))
-             (setq autopair-action (list 'insert-quote last-input-event (point))))))
+         (inside-string (and (eq where-sym :string)
+                             (fourth orig-info)))
+         (escaped-p (autopair-escaped-p syntax-info))
+         
+         )
+    (cond (;; decides whether to skip the quote...
+           ;;
+           (and (not escaped-p)
+                (eq last-input-event (char-after (point)))
+                (or
+                 ;; ... if we're already inside a string and the
+                 ;; string starts with the character just inserted,
+                 ;; or it's a generically terminated string
+                 (and inside-string
+                      (or (eq inside-string t)
+                          (eq last-input-event inside-string)))
+                 ;; ... if we're in a comment and ending a string
+                 ;; (the inside-string criteria does not work
+                 ;; here...)
+                 (and (nth 4 syntax-info)
+                      (condition-case nil
+                          (eq last-input-event (char-after (scan-sexps (1+ (point)) -1)))
+                        (error nil)))))
+           (setq autopair-action (list 'skip-quote last-input-event (point))))
+          (;; decides whether to pair, i.e do *not* pair the quote if...
+           ;;
+           (not
+            (or
+             escaped-p
+             ;; ... inside a generic string
+             (eq inside-string t)
+             ;; ... inside an unterminated string started by this char
+             (autopair-in-unterminated-string-p syntax-triplet)
+             ;; ... uplisting forward causes an error which leaves us
+             ;; inside an unterminated string started by this char
+             (condition-case err
+                 (progn (save-excursion (up-list)) nil)
+               (error
+                (autopair-in-unterminated-string-p (save-excursion
+                                                     (goto-char (fourth err))
+                                                     (autopair-syntax-ppss)))))
+             ;; ... comment-disable or string-disable are true here.
+             ;; The latter is only useful if we're in a string
+             ;; terminated by a character other than
+             ;; `last-input-event'.
+             (some #'(lambda (sym)
+                       (autopair-exception-p where-sym sym autopair-dont-pair))
+                   '(:comment :string))))
+           (setq autopair-action (list 'insert-quote last-input-event (point)))))
     (autopair-fallback)))
 
   (put 'autopair-insert-or-skip-quote 'function-documentation
      '(concat "Insert or possibly skip over a quoting character.\n\n"
               (autopair-document-bindings)))
+
+(defun autopair-in-unterminated-string-p (autopair-triplet)
+  (and (eq last-input-event (fourth (third autopair-triplet)))
+       (condition-case nil (progn (scan-sexps (ninth (third autopair-triplet)) 1) nil) (error t))))     
+
 
 (defun autopair-insert-opening ()
   (interactive)
@@ -449,14 +478,14 @@ uplisting stops there."
     (when (eq (char-after) pair)
       (setq autopair-action (list 'newline pair (point))))
     (autopair-fallback (kbd "RET"))))
-(put 'autopair-backspace 'function-documentation
+(put 'autopair-newline 'function-documentation
      '(concat "Possibly insert two newlines and place point after the first, indented.\n\n"
               (autopair-document-bindings (kbd "RET"))))
 
 (defun autopair-skip-p ()
   (interactive)
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym)))
+  (let* ((syntax-triplet (autopair-syntax-ppss))
+         (syntax-info (first syntax-triplet)))
     (and (eq (char-after (point)) last-input-event)
          (cond ((eq autopair-skip-criteria 'help-balance)
                 (save-excursion
@@ -473,9 +502,9 @@ uplisting stops there."
 
 
 (defun autopair-pair-p ()
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym)))
+  (let* ((syntax-triplet (autopair-syntax-ppss))
+         (syntax-info (first syntax-triplet))
+         (where-sym (second syntax-triplet)))
     (and (not (some #'(lambda (sym)
                         (autopair-exception-p where-sym sym autopair-dont-pair))
                     '(:string :comment :code :everywhere)))
@@ -552,7 +581,8 @@ uplisting stops there."
         (;; opens an extra line after point, then indents
          (and (eq 'newline action)
               (eq pair (char-after (point))))
-         (open-line 1)
+         (save-excursion
+           (newline-and-indent))
          (indent-according-to-mode)
          (when (or (and (boundp 'global-hl-line-mode)
                         global-hl-line-mode)
@@ -609,17 +639,17 @@ uplisting stops there."
               (autopair-document-bindings)))
 
 (defun autopair-extra-pair-p ()
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym)))
+  (let* ((syntax-triplet (autopair-syntax-ppss))
+         (syntax-info (first syntax-triplet))
+         (where-sym (second syntax-triplet)))
     (some #'(lambda (sym)
               (autopair-exception-p where-sym sym autopair-extra-pairs #'car))
           '(:everywhere :comment :string :code))))
 
 (defun autopair-extra-skip-p ()
-  (let* ((syntax-info-and-where-sym (autopair-syntax-ppss))
-         (syntax-info (car syntax-info-and-where-sym))
-         (where-sym (cdr syntax-info-and-where-sym))
+  (let* ((syntax-triplet (autopair-syntax-ppss))
+         (syntax-info (first syntax-triplet))
+         (where-sym (second syntax-triplet))
          (orig-point (point)))
     (and (eq (char-after (point)) last-input-event)
          (some #'(lambda (sym)
