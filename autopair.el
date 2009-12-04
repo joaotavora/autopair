@@ -280,17 +280,23 @@ list.")
 ;; helper functions
 ;;
 (defun autopair-syntax-ppss ()
-  (let ((quick-syntax-info (syntax-ppss)))
-
+  (let* ((quick-syntax-info (syntax-ppss))
+         (string-or-comment-start (start (nth 8 quick-syntax-info))))
     (cond (;; inside a string, recalculate
            (nth 3 quick-syntax-info)
-           (list (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
+           (list (parse-partial-sexp (1+ string-or-comment-start) (point))
                  :string
-                 quick-syntax-info))
+                 quick-syntax-info
+                 (cons string-or-comment-start
+                       (condition-case nil
+                           (scan-sexps string-or-comment-start 1)))))
           ((nth 4 quick-syntax-info)
            (list (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
                  :comment
-                 quick-syntax-info))
+                 quick-syntax-info
+                 (cons string-or-comment-start
+                       (condition-case nil
+                           (scan-sexps string-or-comment-start 1)))))
           (t
            (list quick-syntax-info
                  :code
@@ -330,6 +336,13 @@ list.")
       (setq autopair-action nil))
     (when beyond-autopair
       (call-interactively beyond-autopair))))
+
+(defvar autopair-wrap-region-p () t)
+(defun autopair-wrap-region-p (before after)
+  (and autopair-wrap-region-p
+       mark-active
+       (<= (mark) after)
+       (>= (mark) before)))
 
 (defun autopair-document-bindings (&optional fallback-keys)
   (concat
@@ -424,7 +437,7 @@ uplisting stops there."
                  (progn (save-excursion (up-list)) nil)
                (error
                 (autopair-in-unterminated-string-p (save-excursion
-                                                     (goto-char (fourth err))
+                                                     (setq boundary-after (goto-char (fourth err)))
                                                      (autopair-syntax-ppss)))))
              ;; ... comment-disable or string-disable are true here.
              ;; The latter is only useful if we're in a string
