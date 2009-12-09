@@ -281,7 +281,7 @@ list.")
 ;;
 (defun autopair-syntax-ppss ()
   (let* ((quick-syntax-info (syntax-ppss))
-         (string-or-comment-start (start (nth 8 quick-syntax-info))))
+         (string-or-comment-start (nth 8 quick-syntax-info)))
     (cond (;; inside a string, recalculate
            (nth 3 quick-syntax-info)
            (list (parse-partial-sexp (1+ string-or-comment-start) (point))
