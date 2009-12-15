@@ -7,7 +7,7 @@
 ;; X-URL: http://autopair.googlecode.com
 ;; URL: http://autopair.googlecode.com
 ;; EmacsWiki: AutoPairs
-;; Version: 0.2
+;; Version: 0.3
 ;; Revision: $Rev$ ($LastChangedDate$)
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -208,9 +208,9 @@ When autopair decides on an action this is a list whose first
 three elements are (ACTION PAIR POS-BEFORE).
 
 ACTION is one of `opening', `insert-quote', `skip-quote',
-`backspace' or `newline'. PAIR is an element of
-`autopair-pairs'. POS-BEFORE is value of point before action
-command took place .")
+`backspace' or `newline'. PAIR is a closing
+delimiter. POS-BEFORE is value of point before action command
+took place .")
 (make-variable-buffer-local 'autopair-action)
 
 
@@ -367,25 +367,34 @@ original command as if autopair didn't exist"
                    (mapcar fn (getf blacklist exception-where-sym))
                  (getf blacklist exception-where-sym)))))
 
-(defun autopair-up-list (syntax-info &optional input-event)
-  "Try to uplist as much as reasonably possible.
+(defun autopair-up-list (syntax-info)
+  "Try to uplist as much as possible, return nil if something
+prevented uplisting.
 
-Return nil if something prevented up-listing. If inside nested
-lists of mixed parethesis types, finding a matching parenthesis
-of a mixed-type is considered OK (non-nil is returned) and
-uplisting stops there."
+Otherwise return the a cons of char positions of the starting
+delimiter and end delimiters of the last list we just came out
+of. If we aren't inside any lists return a cons of current point.
+
+If inside nested lists of mixed parethesis types, finding a
+matching parenthesis of a mixed-type is considered OK (non-nil is
+returned) and uplisting stops there."
   (condition-case nil
-      (let ((howmany (car syntax-info)))
+      (let ((howmany (car syntax-info))
+            (retval (cons (point)
+                          (point))))
         (while (and (/= howmany 0)
-                    (or (null input-event)
-                        (condition-case err
-                            (progn
-                              (scan-sexps (point) (point-max))
-                              (error err))
-                          (error (eq input-event (char-before (third err)))))))
+                    (condition-case err
+                        (progn
+                          (scan-sexps (point) (- (point-max)))
+                          (error err))
+                      (error (let ((opening (autopair-find-pair (char-after) 'by-closing-delim)))
+                               (setq retval (cons (fourth err)
+                                                  (point)))
+                               (or (not opening)
+                                   (eq opening (char-after (fourth err))))))))
           (goto-char (scan-lists (point) 1 1))
           (decf howmany))
-        (point))
+        retval)
     (error nil)))
 
 ;; interactive commands and their associated predicates
@@ -498,21 +507,35 @@ uplisting stops there."
 (defun autopair-skip-p ()
   (interactive)
   (let* ((syntax-triplet (autopair-syntax-ppss))
-         (syntax-info (first syntax-triplet)))
-    (and (eq (char-after (point)) last-input-event)
-         (cond ((eq autopair-skip-criteria 'help-balance)
-                (save-excursion
-                  (autopair-up-list syntax-info last-input-event)))
-               ((eq autopair-skip-criteria 'need-opening)
-                (save-excursion
-                  (condition-case err
-                      (progn
-                        (backward-list)
-                        t)
-                    (error nil))))
-               (t
-                t)))))
-
+         (syntax-info (first syntax-triplet))
+         (orig-point (point)))
+    (cond ((eq autopair-skip-criteria 'help-balance)
+           (save-excursion
+             (let ((pos-pair (autopair-up-list syntax-info)))
+               ;; if `autopair-up-list' returned something valid, we
+               ;; probably want to skip but only if on of the following is true.
+               ;;
+               ;; 1. it returned a cons of equal values (we're not inside any list
+               ;;
+               ;; 2. up-listing stopped at a list that contains our original point
+               ;;
+               ;; 3. up-listing stopped at a list that does not
+               ;;    contain out original point but its starting
+               ;;    delimiter matches the one we expect.
+               (and pos-pair
+                    (or (eq (car pos-pair) (cdr pos-pair))
+                        (< orig-point (cdr pos-pair))
+                        (eq (char-after (car pos-pair))
+                            (autopair-find-pair last-input-event 'by-closing-delim)))))))
+          ((eq autopair-skip-criteria 'need-opening)
+           (save-excursion
+             (condition-case err
+                 (progn
+                   (backward-list)
+                   t)
+               (error nil))))
+          (t
+           t))))
 
 (defun autopair-pair-p ()
   (let* ((syntax-triplet (autopair-syntax-ppss))
@@ -581,11 +604,13 @@ uplisting stops there."
          (insert pair)
          (backward-char 1))
         (;; automatically skip oper closer quote delimiter
-         (eq 'skip-quote action)
+         (and (eq 'skip-quote action)
+              (eq pair (char-after (point))))
          (delete-char 1))
         (;; skip over newly-inserted-but-existing closing delimiter
          ;; (normal case)
-         (eq 'closing action)
+         (and (eq 'closing action)
+              (eq pair (char-after (point))))
          (delete-char 1))
         (;; autodelete closing delimiter
          (and (eq 'backspace action)
@@ -717,6 +742,10 @@ uplisting stops there."
                                  "((((((("
                                  #'autopair-pair-p
                                  "------y")
+                           (list " ((()) "
+                                 "----))-"
+                                 #'autopair-skip-p
+                                 "-------")
                            (list " (())  "
                                  "---))--"
                                  #'autopair-skip-p
@@ -725,11 +754,15 @@ uplisting stops there."
                                  "---)))-"
                                  #'autopair-skip-p
                                  "---yyy-")
-                           ;; a mixed paren situations
+                           ;; some mixed paren situations
                            (list "  ()]  "
                                  "-(-----"
                                  #'autopair-pair-p
                                  "-y-----")
+                           (list "  ()]  "
+                                 "-[-----"
+                                 #'autopair-pair-p
+                                 "-------")
                            (list " [([())  "
                                  "-----))--"
                                  #'autopair-skip-p
@@ -792,3 +825,4 @@ uplisting stops there."
 
 (provide 'autopair)
 ;;; autopair.el ends here
+;; 
