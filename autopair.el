@@ -96,6 +96,8 @@
 ;; single-quote characters when inside a comment literal, even if the
 ;; language syntax tables does pair these characters.
 ;;
+;; (defvar autopair-dont-pair `(:string (?') :comment  (?'))
+;;
 ;; As a further example, to also prevent the '{' (opening brace)
 ;; character from being autopaired in C++ comments use this in your
 ;; .emacs.
@@ -126,6 +128,16 @@
 ;;           #'(lambda ()
 ;;               (push '(?< . ?>)
 ;;                     (getf autopair-extra-pairs :code))))
+;;
+;; if you program in emacs-lisp you might also like the following to
+;; pair backtick and quote
+;;
+;; (add-hook 'emacs-lisp-mode-hook
+;;           #'(lambda ()
+;;               (push '(?` . ?')
+;;                     (getf autopair-extra-pairs :comment))
+;;               (push '(?` . ?')
+;;                     (getf autopair-extra-pairs :string))))
 ;;
 ;;; Bugs:
 ;;
@@ -280,6 +292,20 @@ list.")
 ;; helper functions
 ;;
 (defun autopair-syntax-ppss ()
+  "Calculate syntax info relevant to autopair.
+
+A list of four elements is returned:
+
+- SYNTAX-INFO is either the result `syntax-ppss' or the result of
+  calling `parse-partial-sexp' with the appropriate
+  bounds (previously calculated with `syntax-ppss'.
+
+- WHERE-SYM can be one of the symbols :string, :comment or :code.
+
+- QUICK-SYNTAX-INFO is always the result returned by `syntax-ppss'.
+
+- BOUNDS are the boudaries of the current string or comment if
+  we're currently inside one."
   (let* ((quick-syntax-info (syntax-ppss))
          (string-or-comment-start (nth 8 quick-syntax-info)))
     (cond (;; inside a string, recalculate
@@ -289,38 +315,36 @@ list.")
                  quick-syntax-info
                  (cons string-or-comment-start
                        (condition-case nil
-                           (scan-sexps string-or-comment-start 1)))))
+                           (scan-sexps string-or-comment-start 1)
+                         (error nil)))))
           ((nth 4 quick-syntax-info)
            (list (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
                  :comment
-                 quick-syntax-info
-                 (cons string-or-comment-start
-                       (condition-case nil
-                           (scan-sexps string-or-comment-start 1)))))
+                 quick-syntax-info))
           (t
            (list quick-syntax-info
                  :code
                  quick-syntax-info)))))
 
-(defun autopair-find-pair (&optional delim by-closing-delim-p)
-  (setq delim (or delim last-input-event))
-  (let ((syntax-entry (aref (syntax-table) delim)))
-    (cond ((and (eq (syntax-class syntax-entry) (car (string-to-syntax "(")))
-                (not by-closing-delim-p))
-           (cdr syntax-entry))
-          ((eq (syntax-class syntax-entry) (car (string-to-syntax "\"")))
-           delim)
-          ((and (eq (syntax-class syntax-entry) (car (string-to-syntax ")")))
-                by-closing-delim-p)
-           (cdr syntax-entry))
-          (autopair-extra-pairs
-           (some #'(lambda (pair-list)
-                     (some #'(lambda (pair)
-                               (if by-closing-delim-p
-                                   (when (eq (cdr pair) delim) (car pair))
-                                 (when (eq (car pair) delim) (cdr pair))))
-                           pair-list))
-                 (remove-if-not #'listp autopair-extra-pairs))))))
+(defun autopair-find-pair (delim &optional by-closing-delim-p)
+  (when delim
+    (let ((syntax-entry (aref (syntax-table) delim)))
+      (cond ((and (eq (syntax-class syntax-entry) (car (string-to-syntax "(")))
+                  (not by-closing-delim-p))
+             (cdr syntax-entry))
+            ((eq (syntax-class syntax-entry) (car (string-to-syntax "\"")))
+             delim)
+            ((and (eq (syntax-class syntax-entry) (car (string-to-syntax ")")))
+                  by-closing-delim-p)
+             (cdr syntax-entry))
+            (autopair-extra-pairs
+             (some #'(lambda (pair-list)
+                       (some #'(lambda (pair)
+                                 (if by-closing-delim-p
+                                     (when (eq (cdr pair) delim) (car pair))
+                                   (when (eq (car pair) delim) (cdr pair))))
+                             pair-list))
+                   (remove-if-not #'listp autopair-extra-pairs)))))))
 
 (defun autopair-fallback (&optional fallback-keys)
   (let* ((autopair-emulation-alist nil)
@@ -470,7 +494,7 @@ returned) and uplisting stops there."
 (defun autopair-insert-opening ()
   (interactive)
   (when (autopair-pair-p)
-    (setq autopair-action (list 'opening (autopair-find-pair) (point))))
+    (setq autopair-action (list 'opening (autopair-find-pair last-input-event) (point))))
   (autopair-fallback))
 (put 'autopair-insert-opening 'function-documentation
      '(concat "Insert opening delimiter and possibly automatically close it.\n\n"
@@ -661,7 +685,7 @@ returned) and uplisting stops there."
 (defun autopair-extra-insert-opening ()
   (interactive)
   (when (autopair-extra-pair-p)
-    (setq autopair-action (list 'opening (autopair-find-pair) (point))))
+    (setq autopair-action (list 'opening (autopair-find-pair last-input-event) (point))))
   (autopair-fallback))
 (put 'autopair-extra-insert-opening 'function-documentation
      '(concat "Insert (an extra) opening delimiter and possibly automatically close it.\n\n"
@@ -825,4 +849,4 @@ returned) and uplisting stops there."
 
 (provide 'autopair)
 ;;; autopair.el ends here
-;; 
+;;
