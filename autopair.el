@@ -391,7 +391,7 @@ original command as if autopair didn't exist"
                    (mapcar fn (getf blacklist exception-where-sym))
                  (getf blacklist exception-where-sym)))))
 
-(defun autopair-up-list (syntax-info)
+(defun autopair-up-list (syntax-info &optional closing)
   "Try to uplist as much as possible, return nil if something
 prevented uplisting.
 
@@ -411,7 +411,8 @@ returned) and uplisting stops there."
                         (progn
                           (scan-sexps (point) (- (point-max)))
                           (error err))
-                      (error (let ((opening (autopair-find-pair (char-after) 'by-closing-delim)))
+                      (error (let ((opening (and closing
+                                                 (autopair-find-pair closing 'by-closing-delim))))
                                (setq retval (cons (fourth err)
                                                   (point)))
                                (or (not opening)
@@ -535,7 +536,7 @@ returned) and uplisting stops there."
          (orig-point (point)))
     (cond ((eq autopair-skip-criteria 'help-balance)
            (save-excursion
-             (let ((pos-pair (autopair-up-list syntax-info)))
+             (let ((pos-pair (autopair-up-list syntax-info last-input-event)))
                ;; if `autopair-up-list' returned something valid, we
                ;; probably want to skip but only if on of the following is true.
                ;;
@@ -789,6 +790,10 @@ returned) and uplisting stops there."
                                  "-------")
                            (list " [([())  "
                                  "-----))--"
+                                 #'autopair-skip-p
+                                 "-----y---")
+                           (list " [([])   "
+                                 "-----)---"
                                  #'autopair-skip-p
                                  "-----y---")))
 
