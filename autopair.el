@@ -27,7 +27,7 @@
 ;;
 ;; Another stab at making braces and quotes pair like in
 ;; TextMate:
-;;
+;; 
 ;; * Opening braces/quotes are autopaired;
 ;; * Closing braces/quotes are autoskipped;
 ;; * Backspacing an opening brace/quote autodeletes its adjacent pair.
@@ -173,9 +173,10 @@
 
 It's a Common-lisp-style even-numbered property list, each pair
 of elements being of the form (TYPE , PAIRS). PAIRS is a mixed
-list whose elements can be cons cells or character literals. Cons
-cells look like (OPENING . CLOSING) and are paired like
-parenthesis. Single characters are paired like quotes.
+list whose elements are cons cells, which look like cells look
+like (OPENING . CLOSING). Autopair pairs these like
+parenthesis. Note that this does *not* work for single
+characters, e.x. characters you want to behave as quotes.
 
 TYPE can be one of:
 
@@ -187,7 +188,15 @@ TYPE can be one of:
 :code : whereby PAIRS will be considered only when outisde a
         string and a comment.
 
-:everywhere : whereby PAIRS will be considered in all situations")
+:everywhere : whereby PAIRS will be considered in all situations
+
+To have quote-like behaviour consider something like:
+
+(add-hook 'latex-mode-hook
+          #'(lambda ()
+              (modify-syntax-entry ?$ \"\\\"\")))
+
+")
 (make-variable-buffer-local 'autopair-dont-pair)
 
 (defvar autopair-dont-pair `(:string (?') :comment  (?'))
@@ -451,7 +460,7 @@ returned) and uplisting stops there."
                  ;; ... if we're in a comment and ending a string
                  ;; (the inside-string criteria does not work
                  ;; here...)
-                 (and (nth 4 syntax-info)
+                 (and (eq where-sym :comment)
                       (condition-case nil
                           (eq last-input-event (char-after (scan-sexps (1+ (point)) -1)))
                         (error nil)))))
@@ -575,7 +584,10 @@ returned) and uplisting stops there."
                        (autopair-up-list syntax-info)
                        (condition-case err
                            (progn
-                             (forward-sexp (point-max))
+                             (let ((prev-point (point-max)))
+                               (while (not (eq prev-point (point)))
+                                 (setq prev-point (point))
+                                 (forward-sexp)))
                              t)
                          (error
                           ;; if `forward-sexp' returned an error,
