@@ -168,15 +168,14 @@
   "If non-nil `autopair-global-mode' does not activate in buffer")
 (make-variable-buffer-local 'autopair-dont-activate)
 
-(defvar autopair-extra-pairs `(:comment ((?` . ?')))
+(defvar autopair-extra-pairs nil
   "Extra pairs for which to use pairing.
 
 It's a Common-lisp-style even-numbered property list, each pair
 of elements being of the form (TYPE , PAIRS). PAIRS is a mixed
 list whose elements are cons cells, which look like cells look
 like (OPENING . CLOSING). Autopair pairs these like
-parenthesis. Note that this does *not* work for single
-characters, e.x. characters you want to behave as quotes.
+parenthesis. 
 
 TYPE can be one of:
 
@@ -190,14 +189,23 @@ TYPE can be one of:
 
 :everywhere : whereby PAIRS will be considered in all situations
 
-To have quote-like behaviour consider something like:
+In Emacs-lisp, this might be useful
+
+(add-hook 'emacs-lisp-mode-hook
+          #'(lambda ()
+              (setq autopair-extra-pairs `(:comment ((?`. ?'))))))
+
+
+Note that this does *not* work for single characters,
+e.x. characters you want to behave as quotes.  To have quote-like
+behaviour consider using something else, for example:
 
 (add-hook 'latex-mode-hook
           #'(lambda ()
               (modify-syntax-entry ?$ \"\\\"\")))
 
 ")
-(make-variable-buffer-local 'autopair-dont-pair)
+(make-variable-buffer-local 'autopair-extra-pairs)
 
 (defvar autopair-dont-pair `(:string (?') :comment  (?'))
   "Characters for which to skip any pairing behaviour.
@@ -280,7 +288,8 @@ list.")
                  (cond ((eq class (car (string-to-syntax "(")))
                         (define-key map (string char) 'autopair-insert-opening)
                         (define-key map (string pair) 'autopair-skip-close-maybe))
-                       ((eq class (car (string-to-syntax "\"")))
+                       ((or (eq class (car (string-to-syntax "\"")))
+                            (eq class (car (string-to-syntax "$"))))
                         (define-key map (string char) 'autopair-insert-or-skip-quote))))))
            ;; read `autopair-extra-pairs'
            (dolist (pairs-list (remove-if-not #'listp autopair-extra-pairs))
@@ -709,7 +718,7 @@ returned) and uplisting stops there."
   (when (autopair-extra-skip-p)
     (setq autopair-action (list 'closing last-input-event (point))))
   (autopair-fallback))
-(put 'autopair-extra-skip-p 'function-documentation
+(put 'autopair-extra-skip-close-maybe 'function-documentation
      '(concat "Insert or possibly skip over a (and extra) closing delimiter.\n\n"
               (autopair-document-bindings)))
 
