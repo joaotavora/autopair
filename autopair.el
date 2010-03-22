@@ -410,10 +410,11 @@ original command as if autopair didn't exist"
                  (getf blacklist exception-where-sym)))))
 
 (defun autopair-up-list (syntax-info &optional closing)
-  "Try to uplist as much as possible, return nil if something
-prevented uplisting.
+  "Try to uplist as much as possible, moving point.
 
-Otherwise return the a cons of char positions of the starting
+Return nil if something prevented uplisting.
+
+Otherwise return a cons of char positions of the starting
 delimiter and end delimiters of the last list we just came out
 of. If we aren't inside any lists return a cons of current point.
 
@@ -583,44 +584,61 @@ returned) and uplisting stops there."
 (defun autopair-pair-p ()
   (let* ((syntax-triplet (autopair-syntax-ppss))
          (syntax-info (first syntax-triplet))
-         (where-sym (second syntax-triplet)))
+         (where-sym (second syntax-triplet))
+         (orig-point (point)))
     (and (not (some #'(lambda (sym)
                         (autopair-exception-p where-sym sym autopair-dont-pair))
                     '(:string :comment :code :everywhere)))
          (cond ((eq autopair-pair-criteria 'help-balance)
                 (and (not (autopair-escaped-p syntax-info))
                      (save-excursion
-                       (autopair-up-list syntax-info)
-                       (condition-case err
-                           (progn
-                             (let ((prev-point (point-max)))
+                       (let ((pos-pair (autopair-up-list syntax-info))
+                             (prev-point (point-max))
+                             (expected-closing (autopair-find-pair last-input-event)))
+                         (condition-case err
+                             (progn
                                (while (not (eq prev-point (point)))
                                  (setq prev-point (point))
-                                 (forward-sexp)))
-                             t)
-                         (error
-                          ;; if `forward-sexp' returned an error,
-                          ;; typically we don't want to autopair,
-                          ;; unless...
-                          ;;
-                          ;; 1. `forward-sexp' stopped at a parenthesis
-                          ;;    of a different type than
-                          ;;    `last-input-event'
-                          ;;
-                          ;; 2. The error is of type "containing
-                          ;;    expression ends prematurely", which means
-                          ;;    we're in the "too-many-openings"
-                          ;;    situation and thus want to autopair.
-                          (or (not (eq (autopair-find-pair last-input-event)
-                                       (char-after (third err))))
-                              (not (string-match "prematurely" (second err))))
-                          ;; (eq (fourth err) (point-max))
-                          )))))
+                                 (forward-sexp))
+                               t)
+                           (error
+                            ;; if `forward-sexp' (called by
+                            ;; `autopair-forward') returned an error,
+                            ;; typically we don't want to autopair,
+                            ;; unless one of the following occurs:
+                            ;; 
+                            (cond ((not (string-match "prematurely" (second err)))
+                                   ;; 1. The error is *not* of type "containing
+                                   ;;    expression ends prematurely", which
+                                   ;;    means we're in the "too-many-openings"
+                                   ;;    situation and thus want to autopair.
+                                   t)
+                                  ((and (<= orig-point (cdr pos-pair))
+                                        (eq (char-after (scan-lists (point) -1 0))
+                                            last-input-event))
+                                   ;; 2. Mixed paren situations,
+                                   ;;    specifically: We weren't
+                                   ;;    inside any list originally (
+                                   ;;    car eqs cdr in `pos-pair')
+                                   ;;    and the list we just
+                                   ;;    forwarded over was started by
+                                   ;;    `last-input-event'.
+                                   ;;
+                                   (or
+                                    ;; mixed ()] for input (, yes autopair
+                                    (not (eq expected-closing (char-after (third err))))
+                                    ;; mixed (]) for input (, yes autopair
+                                    (not (eq expected-closing (char-before (point))))
+                                    ;; ()) for input (, not mixed hence no autopair
+                                    ))
+                                  (t
+                                   nil))
+                            ;; (eq (fourth err) (point-max))
+                            ))))))
                ((eq autopair-pair-criteria 'always)
                 t)
                (t
                 (not (autopair-escaped-p)))))))
-
 
 ;; post-command-hook stuff
 ;;
@@ -633,9 +651,13 @@ returned) and uplisting stops there."
                pair
                pos-before)
       (if autopair-handle-action-fns
-          (mapc #'(lambda (fn)
-                    (funcall fn action pair pos-before))
-                autopair-handle-action-fns)
+          (condition-case err
+              (mapc #'(lambda (fn)
+                        (funcall fn action pair pos-before))
+                    autopair-handle-action-fns)
+            (error (progn
+                     (message "[autopair] error running `autopair-handle-action-fns', switching autopair off")
+                     (autopair-mode -1))))
         (autopair-default-handle-action action pair pos-before))))
     (setq autopair-action nil))
 
@@ -747,122 +769,6 @@ returned) and uplisting stops there."
            (search-forward (make-string 1 (autopair-find-pair last-input-event 'by-closing-delim))
                            orig-point
                            'noerror)))))
-
-(defvar autopair-extra-tests nil)
-(setq autopair-extra-tests (list (list "       "
-                                       "-----`-"
-                                       #'autopair-extra-pair-p
-                                       "-----y-"
-                                       '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
-                                 (list "\"     \""
-                                       "-----`-"
-                                       #'autopair-extra-pair-p
-                                       "-----y-"
-                                       '((autopair-extra-pairs '(:string ((?` . ?'))))))
-                                 (list "   ` ' "
-                                       "-----'-"
-                                       #'autopair-extra-skip-p
-                                       "-----y-"
-                                       '((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
-                                 (list "  \"   \""
-                                       "-`---`-"
-                                       #'autopair-extra-pair-p
-                                       "-----y-"
-                                       '((autopair-extra-pairs '(:string ((?` . ?'))))))))
-
-
-
-;; mini test-framework for the decision making predicates
-;;
-(defvar autopair-tests)
-(setq autopair-tests (list (list " (())  "          ; contents
-                                 "((((((("          ; input
-                                 #'autopair-pair-p  ; predicate
-                                 "yyyyyyy"          ; expected
-                                 nil)               ; let-style-test-env
-                           (list " ((()) "
-                                 "((((((("
-                                 #'autopair-pair-p
-                                 "yyyyyyy")
-                           (list " (())) "
-                                 "((((((("
-                                 #'autopair-pair-p
-                                 "------y")
-                           (list " ((()) "
-                                 "----))-"
-                                 #'autopair-skip-p
-                                 "-------")
-                           (list " (())  "
-                                 "---))--"
-                                 #'autopair-skip-p
-                                 "---yy--")
-                           (list " (())) "
-                                 "---)))-"
-                                 #'autopair-skip-p
-                                 "---yyy-")
-                           ;; some mixed paren situations
-                           (list "  ()]  "
-                                 "-(-----"
-                                 #'autopair-pair-p
-                                 "-y-----")
-                           (list "  ()]  "
-                                 "-[-----"
-                                 #'autopair-pair-p
-                                 "-------")
-                           (list " [([())  "
-                                 "-----))--"
-                                 #'autopair-skip-p
-                                 "-----y---")
-                           (list " [([])   "
-                                 "-----)---"
-                                 #'autopair-skip-p
-                                 "-----y---")))
-
-(defun autopair-test (buffer-contents
-                      input
-                      predicate)
-  (with-temp-buffer
-    (autopair-mode t)
-    (insert buffer-contents)
-    (let* ((size (1- (point-max)))
-           (result (make-string size ?-)))
-      (dotimes (i size)
-        (goto-char (1+ i))
-        (let ((last-input-event (aref input i)))
-          (when (and (not (eq last-input-event ?-))
-                     (funcall predicate) (aset result i ?y)))))
-      result)))
-
-(defun autopair-run-tests (&optional suite)
-  (interactive)
-  (let ((passed 0)
-        (failed 0))
-    (with-output-to-temp-buffer "*autopair-tests*"
-      (dolist (spec (or suite (append autopair-tests
-                                      autopair-extra-tests)))
-        (condition-case err
-            (progn (assert (equal
-                            (condition-case nil\
-                                (eval `(let ,(fifth spec)
-                                         (autopair-test (first spec)
-                                                        (second spec)
-                                                        (third spec))))
-                              (error "error"))
-                            (fourth spec))
-                           'show-args
-                           (format "test \"%s\" for input %s returned %%s instead of %s\n"
-                                   (first spec)
-                                   (second spec)
-                                   (fourth spec)))
-                   (incf passed))
-          (error (progn
-                   (princ (cadr err))
-                   (incf failed))))
-        )
-      (princ (format "\n\n%s tests total, %s pass, %s failures"
-                     (+ passed failed)
-                     passed
-                     failed)))))
 
 ;; Compatibility with delsel.el.
 (put 'autopair-insert-opening 'delete-selection t)
