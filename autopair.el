@@ -809,6 +809,7 @@ returned) and uplisting stops there."
         (cond (reverse-selected
                (goto-char (1+ (cdr region-before)))
                (insert pair)
+               (autopair-blink)
                (goto-char (1+ (car region-before))))
               (t
                (delete-backward-char 1)
@@ -827,15 +828,18 @@ returned) and uplisting stops there."
               (t
                (goto-char (car region-before))
                (insert pair)
+               (autopair-blink)
                (goto-char (+ 2 (cdr region-before)))))
         (setq autopair-action nil))
        ((eq 'insert-quote (first autopair-action))
         (cond (reverse-selected
                (goto-char (1+ (cdr region-before)))
-               (insert pair))
+               (insert pair)
+               (autopair-blink))
               (t
                (goto-char (car region-before))
-               (insert last-input-event)))
+               (insert last-input-event)
+               (autopair-blink)))
         (setq autopair-action nil))
        (reverse-selected
         (delete-backward-char 1)
