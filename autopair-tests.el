@@ -68,6 +68,10 @@
                                  "((((((("
                                  #'autopair-pair-p
                                  "------y")
+                           (list "()   ) "
+                                 "---(---"
+                                 #'autopair-pair-p
+                                 "-------")
                            (list " ((()) "
                                  "----))-"
                                  #'autopair-skip-p

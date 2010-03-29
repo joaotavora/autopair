@@ -454,6 +454,9 @@ This is also done in an optimistic \"try-to-balance\" fashion.")
 (defvar autopair-blink-delay 0.1
   "Autopair's blink-the-delimiter delay.")
 
+(defvar autopair-skip-whitespace nil
+  "If non-nil attempt to skip whitespace before closing delimiters.") 
+
 (defun autopair-document-bindings (&optional fallback-keys)
   (concat
    "Works by scheduling possible autopair behaviour, then calls
@@ -755,9 +758,13 @@ returned) and uplisting stops there."
         (blink-matching-delay autopair-blink-delay))
     (blink-matching-open)))
 
-(defun autopair-blink ()
+(defun autopair-blink (&optional pos)
   (when autopair-blink
-    (sit-for autopair-blink-delay)))
+  (if pos
+      (save-excursion
+        (goto-char pos)
+        (sit-for autopair-blink-delay))
+    (sit-for autopair-blink-delay))))
 
 (defun autopair-default-handle-action (action pair pos-before)
   ;;(message "action is %s" action)
@@ -779,10 +786,14 @@ returned) and uplisting stops there."
          (autopair-blink-matching-open))
         (;; skip over newly-inserted-but-existing closing delimiter
          ;; (normal case)
-         (and (eq 'closing action)
-              (eq last-input-event (char-after (point))))
-         (delete-char 1)
-         (autopair-blink-matching-open))
+         (eq 'closing action)
+         (let ((skipped 0))
+           (when autopair-skip-whitespace
+             (setq skipped (save-excursion (skip-chars-forward "\s\n\t"))))
+           (when (eq last-input-event (char-after (point)))
+             (unless (zerop skipped) (autopair-blink (+ (point) skipped)))
+             (delete-char (1+ skipped))
+             (autopair-blink-matching-open))))
         (;; autodelete closing delimiter
          (and (eq 'backspace action)
               (eq pair (char-after (point))))
