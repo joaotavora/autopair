@@ -7,7 +7,7 @@
 ;; X-URL: http://autopair.googlecode.com
 ;; URL: http://autopair.googlecode.com
 ;; EmacsWiki: AutoPairs
-;; Version: 0.3
+;; Version: 0.4
 ;; Revision: $Rev$ ($LastChangedDate$)
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -97,6 +97,8 @@
 ;;
 ;; If you find the paren-blinking annoying, turn `autopair-blink' to
 ;; nil.
+;;
+;; For lisp-programming you might also like `autopair-skip-whitespace'.
 ;;
 ;; For further customization have a look at `autopair-dont-pair',
 ;; `autopair-handle-action-fns' and `autopair-extra-pair'.
@@ -446,6 +448,12 @@ A list of four elements is returned:
 
 This is also done in an optimistic \"try-to-balance\" fashion.")
 
+(defvar autopair-skip-whitespace nil
+  "If non-nil also skip over whitespace when skipping closing delimiters.
+
+This will be most useful in lisp-like languages where you want
+lots of )))))....")
+
 (defvar autopair-blink (if (boundp 'blink-matching-paren)
                            blink-matching-paren
                          t)
@@ -453,9 +461,6 @@ This is also done in an optimistic \"try-to-balance\" fashion.")
 
 (defvar autopair-blink-delay 0.1
   "Autopair's blink-the-delimiter delay.")
-
-(defvar autopair-skip-whitespace nil
-  "If non-nil attempt to skip whitespace before closing delimiters.") 
 
 (defun autopair-document-bindings (&optional fallback-keys)
   (concat
@@ -790,7 +795,7 @@ returned) and uplisting stops there."
          (let ((skipped 0))
            (when autopair-skip-whitespace
              (setq skipped (save-excursion (skip-chars-forward "\s\n\t"))))
-           (when (eq last-input-event (char-after (point)))
+           (when (eq last-input-event (char-after (+ (point) skipped)))
              (unless (zerop skipped) (autopair-blink (+ (point) skipped)))
              (delete-char (1+ skipped))
              (autopair-blink-matching-open))))
