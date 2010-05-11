@@ -308,7 +308,7 @@ the list, or call it in your handlers.")
 ;;
 (define-globalized-minor-mode autopair-global-mode autopair-mode autopair-on)
 
-(defun autopair-on () (unless autopair-dont-activate (autopair-mode 1)))
+(defun autopair-on () (unless (or buffer-read-only autopair-dont-activate) (autopair-mode 1)))
 
 (define-minor-mode autopair-mode
   "Automagically pair braces and quotes like in TextMate."
