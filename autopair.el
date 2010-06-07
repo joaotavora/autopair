@@ -154,20 +154,10 @@
 ;;; Bugs:
 ;;
 ;; * Quote pairing/skipping inside comments is not perfect...
-;; * Autopair is perfectly compatible with `delete-selection-mode'. To
-;;   do so, add the following to your .emacs.
-;; 
-;;   (put 'autopair-insert-opening 'delete-selection t)
-;;   (put 'autopair-skip-close-maybe 'delete-selection t)
-;;   (put 'autopair-insert-or-skip-quote 'delete-selection t)
-;;   (put 'autopair-extra-insert-opening 'delete-selection t)
-;;   (put 'autopair-extra-skip-close-maybe 'delete-selection t)
-;;   (put 'autopair-backspace 'delete-selection 'supersede)
-;;   (put 'autopair-newline 'delete-selection t)
 ;;
-;;  you will, however, lose the `autopair-autowrap'
-;;  behaviour. Autopair is compatible with `cua-mode' though, which
-;;  also provides the same behaviour.
+;; * See the last section on monkey-patching for the `defadvice'
+;;   tricks used to make `autopair-autowrap' work with `cua-mode' and
+;;   `delete-selection-mode'.
 ;;
 ;;; Credit:
 ;;
@@ -393,7 +383,8 @@ A list of four elements is returned:
                  quick-syntax-info)))))
 
 (defun autopair-find-pair (delim)
-  (when delim
+  (when (and delim
+             (integerp delim))
     (let ((syntax-entry (aref (syntax-table) delim)))
       (cond ((eq (syntax-class syntax-entry) (car (string-to-syntax "(")))
              (cdr syntax-entry))
@@ -409,8 +400,8 @@ A list of four elements is returned:
                              pair-list))
                    (remove-if-not #'listp autopair-extra-pairs)))))))
 
-(defun autopair-set-wrapping-action ()
-  (when mark-active
+(defun autopair-calculate-wrap-action ()
+  (when (region-active-p)
     (save-excursion
       (let* ((region-before (cons (region-beginning)
                                   (region-end)))
@@ -419,10 +410,10 @@ A list of four elements is returned:
              (end-syntax   (syntax-ppss (cdr region-before))))
         (when (and (eq (nth 0 start-syntax) (nth 0 end-syntax))
                    (eq (nth 3 start-syntax) (nth 3 end-syntax)))
-          (setq autopair-wrap-action (list 'wrap (or (second autopair-action)
-                                                     (autopair-find-pair last-input-event))
-                                           point-before
-                                           region-before)))))))
+          (list 'wrap (or (second autopair-action)
+                          (autopair-find-pair last-input-event))
+                point-before
+                region-before))))))
 
 (defun autopair-fallback (&optional fallback-keys)
   (let* ((autopair-emulation-alist nil)
@@ -432,7 +423,7 @@ A list of four elements is returned:
          (beyond-autopair (or (key-binding (this-single-command-keys))
                               (key-binding fallback-keys))))
     (when autopair-autowrap
-      (autopair-set-wrapping-action))
+      (setq autopair-wrap-action (autopair-calculate-wrap-action)))
     
     (setq this-original-command beyond-cua)
     ;; defer to "paredit-mode" if that is installed and running
@@ -733,28 +724,29 @@ returned) and uplisting stops there."
 `autopair-wrap-action'. "
   (when (and autopair-wrap-action
              (notany #'null autopair-wrap-action))
-    (condition-case err
-        (if autopair-handle-wrap-action-fns
+    
+    (if autopair-handle-wrap-action-fns
+        (condition-case err
             (mapc #'(lambda (fn)
                       (apply fn autopair-wrap-action))
                   autopair-handle-wrap-action-fns)
-          (apply #'autopair-default-handle-wrap-action autopair-wrap-action))
-      (error (progn
-               (message "[autopair] error running `autopair-handle-wrap-action-fns', switching autopair off")
-               (autopair-mode -1))))
+          (error (progn
+                   (message "[autopair] error running custom `autopair-handle-wrap-action-fns', switching autopair off")
+                   (autopair-mode -1))))
+      (apply #'autopair-default-handle-wrap-action autopair-wrap-action))
     (setq autopair-wrap-action nil))
   
   (when (and autopair-action
              (notany #'null autopair-action))
-    (condition-case err
-        (if autopair-handle-action-fns
+    (if autopair-handle-action-fns
+        (condition-case err
             (mapc #'(lambda (fn)
                       (funcall fn (first autopair-action) (second autopair-action) (third autopair-action)))
                   autopair-handle-action-fns)
-          (apply #'autopair-default-handle-action autopair-action))
-      (error (progn
-               (message "[autopair] error running `autopair-handle-action-fns', switching autopair off")
-               (autopair-mode -1))))
+          (error (progn
+                   (message "[autopair] error running custom `autopair-handle-action-fns', switching autopair off")
+                   (autopair-mode -1))))
+      (apply #'autopair-default-handle-action autopair-action))
     (setq autopair-action nil)))
 
 (defun autopair-blink-matching-open ()
@@ -935,6 +927,38 @@ returned) and uplisting stops there."
            (search-forward (make-string 1 (autopair-find-pair last-input-event))
                            orig-point
                            'noerror)))))
+
+;; monkey-patching: Compatibility with delete-selection-mode and cua-mode
+;;
+;; Ideally one would be able to use functions as the value of the
+;; 'delete-selection properties of the autopair commands. The function
+;; would return non-nil when no wrapping should/could can be performed.
+;;
+;; Until then use some `defadvice' i.e. monkey-patching
+;;
+(put 'autopair-insert-opening 'delete-selection t)
+(put 'autopair-skip-close-maybe 'delete-selection t)
+(put 'autopair-insert-or-skip-quote 'delete-selection t)
+(put 'autopair-extra-insert-opening 'delete-selection t)
+(put 'autopair-extra-skip-close-maybe 'delete-selection t)
+(put 'autopair-backspace 'delete-selection 'supersede)
+(put 'autopair-newline 'delete-selection t)
+
+(defun autopair-should-autowrap ()
+  (let ((name (symbol-name this-command)))
+    (and autopair-mode
+         (not (eq this-command 'autopair-backspace))
+         (string-match "autopair" (symbol-naxme this-command))
+         (autopair-calculate-wrap-action))))
+
+(defadvice cua--pre-command-handler-1 (around autopair-override activate)
+  "Don't actually do anything if autopair is about to autowrap. "
+  (unless (autopair-should-autowrap) ad-do-it))
+
+(defadvice delete-selection-pre-hook (around autopair-override activate)
+  "Don't actually do anything if autopair is about to autowrap. "
+  (unless (autopair-should-autowrap) ad-do-it))
+
 
 (provide 'autopair)
 ;;; autopair.el ends here
