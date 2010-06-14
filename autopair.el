@@ -948,7 +948,7 @@ returned) and uplisting stops there."
   (let ((name (symbol-name this-command)))
     (and autopair-mode
          (not (eq this-command 'autopair-backspace))
-         (string-match "autopair" (symbol-naxme this-command))
+         (string-match "autopair" (symbol-name this-command))
          (autopair-calculate-wrap-action))))
 
 (defadvice cua--pre-command-handler-1 (around autopair-override activate)
