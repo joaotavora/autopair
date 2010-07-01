@@ -525,7 +525,7 @@ returned) and uplisting stops there."
       (let ((howmany (car syntax-info))
             (retval (cons (point)
                           (point))))
-        (while (and (/= howmany 0)
+        (while (and (> howmany 0)
                     (condition-case err
                         (progn
                           (scan-sexps (point) (- (point-max)))
