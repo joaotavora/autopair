@@ -117,17 +117,15 @@
 (defun autopair-test (buffer-contents
                       input
                       predicate)
-  (with-temp-buffer
-    (autopair-mode t)
     (insert buffer-contents)
     (let* ((size (1- (point-max)))
            (result (make-string size ?-)))
       (dotimes (i size)
         (goto-char (1+ i))
-        (let ((last-input-event (aref input i)))
-          (when (and (not (eq last-input-event ?-))
+        (let ((autopair-inserted (aref input i)))
+          (when (and (not (eq autopair-inserted ?-))
                      (funcall predicate) (aset result i ?y)))))
-      result)))
+      result))
 
 (defun autopair-run-tests (&optional suite)
   (interactive)
@@ -138,12 +136,19 @@
                                       autopair-extra-tests)))
         (condition-case err
             (progn (assert (equal
-                            (condition-case nil\
-                                (eval `(let ,(fifth spec)
-                                         (autopair-test (first spec)
-                                                        (second spec)
-                                                        (third spec))))
-                              (error "error"))
+                            (condition-case nil
+                                (with-temp-buffer
+                                  (autopair-mode t)
+                                  (emacs-lisp-mode)
+                                  (setq autopair-extra-pairs nil
+                                        autopair-dont-pair nil
+                                        autopair-handle-action-fns nil
+                                        autopair-handle-wrap-action-fns nil)
+                                  (eval `(let ,(fifth spec)
+                                           (autopair-test (first spec)
+                                                          (second spec)
+                                                          (third spec)))))
+                                (error "error"))
                             (fourth spec))
                            'show-args
                            (format "test \"%s\" for input %s returned %%s instead of %s\n"
