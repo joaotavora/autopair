@@ -816,94 +816,102 @@ returned) and uplisting stops there."
 
 (defun autopair-default-handle-action (action pair pos-before)
   ;;(message "action is %s" action)
-  (cond (;; automatically insert closing delimiter
-         (and (eq 'opening action)
-              (not (eq pair (char-before))))
-         (insert pair)
-         (autopair-blink)
-         (backward-char 1))
-        (;; automatically insert closing quote delimiter
-         (eq 'insert-quote action)
-         (insert pair)
-         (autopair-blink)
-         (backward-char 1))
-        (;; automatically skip oper closer quote delimiter
-         (and (eq 'skip-quote action)
-              (eq pair (char-after (point))))
-         (delete-char 1)
-         (autopair-blink-matching-open))
-        (;; skip over newly-inserted-but-existing closing delimiter
-         ;; (normal case)
-         (eq 'closing action)
-         (let ((skipped 0))
-           (when autopair-skip-whitespace
-             (setq skipped (save-excursion (skip-chars-forward "\s\n\t"))))
-           (when (eq autopair-inserted (char-after (+ (point) skipped)))
-             (unless (zerop skipped) (autopair-blink (+ (point) skipped)))
-             (delete-char (1+ skipped))
-             (autopair-blink-matching-open))))
-        (;; autodelete closing delimiter
-         (and (eq 'backspace action)
-              (eq pair (char-after (point))))
-         (delete-char 1))
-        (;; opens an extra line after point, then indents
-         (and (eq 'newline action)
-              (eq pair (char-after (point))))
-         (save-excursion
-           (newline-and-indent))
-         (indent-according-to-mode)
-         (when (or (and (boundp 'global-hl-line-mode)
-                        global-hl-line-mode)
-                   (and (boundp 'hl-line-mode)
-                        hl-line-mode))
-           (hl-line-unhighlight) (hl-line-highlight)))))
+  (condition-case err
+      (cond (;; automatically insert closing delimiter
+             (and (eq 'opening action)
+                  (not (eq pair (char-before))))
+             (insert pair)
+             (autopair-blink)
+             (backward-char 1))
+            (;; automatically insert closing quote delimiter
+             (eq 'insert-quote action)
+             (insert pair)
+             (autopair-blink)
+             (backward-char 1))
+            (;; automatically skip oper closer quote delimiter
+             (and (eq 'skip-quote action)
+                  (eq pair (char-after (point))))
+             (delete-char 1)
+             (autopair-blink-matching-open))
+            (;; skip over newly-inserted-but-existing closing delimiter
+             ;; (normal case)
+             (eq 'closing action)
+             (let ((skipped 0))
+               (when autopair-skip-whitespace
+                 (setq skipped (save-excursion (skip-chars-forward "\s\n\t"))))
+               (when (eq autopair-inserted (char-after (+ (point) skipped)))
+                 (unless (zerop skipped) (autopair-blink (+ (point) skipped)))
+                 (if (zerop skipped)
+                     (progn (backward-char 1) (delete-char 1) (forward-char))
+                   (delete-char (1+ skipped)))
+                 (autopair-blink-matching-open))))
+            (;; autodelete closing delimiter
+             (and (eq 'backspace action)
+                  (eq pair (char-after (point))))
+             (delete-char 1))
+            (;; opens an extra line after point, then indents
+             (and (eq 'newline action)
+                  (eq pair (char-after (point))))
+             (save-excursion
+               (newline-and-indent))
+             (indent-according-to-mode)
+             (when (or (and (boundp 'global-hl-line-mode)
+                            global-hl-line-mode)
+                       (and (boundp 'hl-line-mode)
+                            hl-line-mode))
+               (hl-line-unhighlight) (hl-line-highlight))))
+    (error
+     (message "[autopair] Ignored error in `autopair-default-handle-action'"))))
 
 (defun autopair-default-handle-wrap-action (action pair pos-before region-before)
   "Default handler for the wrapping action in `autopair-wrap'"
-  (when (eq 'wrap action)
-    (let ((reverse-selected (= (car region-before) pos-before)))
-      (cond
-       ((eq 'opening (first autopair-action))
-        ;; (message "wrap-opening!")
-        (cond (reverse-selected
-               (goto-char (1+ (cdr region-before)))
-               (insert pair)
-               (autopair-blink)
-               (goto-char (1+ (car region-before))))
-              (t
-               (delete-backward-char 1)
-               (insert pair)
-               (goto-char (car region-before))
-               (insert autopair-inserted)))
-        (setq autopair-action nil) )
-       (;; wraps
-        (eq 'closing (first autopair-action))
-        ;; (message "wrap-closing!")
-        (cond (reverse-selected
-               (delete-backward-char 1)
-               (insert pair)
-               (goto-char (1+ (cdr region-before)))
-               (insert autopair-inserted))
-              (t
-               (goto-char (car region-before))
-               (insert pair)
-               (autopair-blink)
-               (goto-char (+ 2 (cdr region-before)))))
-        (setq autopair-action nil))
-       ((eq 'insert-quote (first autopair-action))
-        (cond (reverse-selected
-               (goto-char (1+ (cdr region-before)))
-               (insert pair)
-               (autopair-blink))
-              (t
-               (goto-char (car region-before))
-               (insert autopair-inserted)
-               (autopair-blink)))
-        (setq autopair-action nil))
-       (reverse-selected
-        (delete-backward-char 1)
-        (goto-char (cdr region-before))
-        (insert autopair-inserted))))))
+  (condition-case err
+      (when (eq 'wrap action)
+        (let ((reverse-selected (= (car region-before) pos-before)))
+          (cond
+           ((eq 'opening (first autopair-action))
+            ;; (message "wrap-opening!")
+            (cond (reverse-selected
+                   (goto-char (1+ (cdr region-before)))
+                   (insert pair)
+                   (autopair-blink)
+                   (goto-char (1+ (car region-before))))
+                  (t
+                   (delete-backward-char 1)
+                   (insert pair)
+                   (goto-char (car region-before))
+                   (insert autopair-inserted)))
+            (setq autopair-action nil) )
+           (;; wraps
+            (eq 'closing (first autopair-action))
+            ;; (message "wrap-closing!")
+            (cond (reverse-selected
+                   (delete-backward-char 1)
+                   (insert pair)
+                   (goto-char (1+ (cdr region-before)))
+                   (insert autopair-inserted))
+                  (t
+                   (goto-char (car region-before))
+                   (insert pair)
+                   (autopair-blink)
+                   (goto-char (+ 2 (cdr region-before)))))
+            (setq autopair-action nil))
+           ((eq 'insert-quote (first autopair-action))
+            (cond (reverse-selected
+                   (goto-char (1+ (cdr region-before)))
+                   (insert pair)
+                   (autopair-blink))
+                  (t
+                   (goto-char (car region-before))
+                   (insert autopair-inserted)
+                   (autopair-blink)))
+            (setq autopair-action nil))
+           (reverse-selected
+            (delete-backward-char 1)
+            (goto-char (cdr region-before))
+            (insert autopair-inserted)))))
+    (error
+     (message "[autopair] Ignored error in `autopair-default-handle-wrap-action'"))))
 
 
 ;; example python triple quote helper
