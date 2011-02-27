@@ -23,12 +23,7 @@
 ;; Mini test framework for autopair.el
 
 ;;; Code:
-
-
-
-(provide 'autopair-tests)
-;;; autopair-tests.el ends here
-
+(require 'autopair)
 (setq autopair-extra-tests (list (list "       "
                                        "-----`-"
                                        #'autopair-extra-pair-p
@@ -114,18 +109,64 @@
                                  #'autopair-skip-p
                                  "-----y---")))
 
-(defun autopair-test (buffer-contents
+(defvar autopair-autowrap-tests)
+(setq autopair-autowrap-tests (list
+                               (list #'(lambda ()
+                                         (insert "hello") (set-mark (point)) (beginning-of-buffer))
+                                     "("
+                                     #'(lambda ()
+                                         (cons (buffer-substring-no-properties (point-min) (point-max))
+                                               (point)))
+                                     '("(hello)" . 2))
+                               (list #'(lambda ()
+                                         (insert "hello") (set-mark (point)) (beginning-of-buffer))
+                                     ")"
+                                     #'(lambda ()
+                                         (cons (buffer-substring-no-properties (point-min) (point-max))
+                                               (point)))
+                                     '("(hello)" . 8))
+                               (list #'(lambda ()
+                                         (insert "hello") (set-mark (point)) (beginning-of-buffer)
+                                         (exchange-point-and-mark))
+                                     ")"
+                                     #'(lambda ()
+                                         (cons (buffer-substring-no-properties (point-min) (point-max))
+                                               (point)))
+                                     '("(hello)" . 8))
+                               (list #'(lambda ()
+                                         (insert "hello") (set-mark (point)) (beginning-of-buffer)
+                                         (exchange-point-and-mark))
+                                     "("
+                                     #'(lambda ()
+                                         (cons (buffer-substring-no-properties (point-min) (point-max))
+                                               (point)))
+                                     '("(hello)" . 2))))
+
+(dolist (p '(autopair-pair-p autopair-skip-p autopair-extra-skip-p autopair-extra-pair-p))
+  (put p 'autopair-test-charwise-predicate t))
+
+(defun autopair-test (before
                       input
-                      predicate)
-    (insert buffer-contents)
-    (let* ((size (1- (point-max)))
-           (result (make-string size ?-)))
-      (dotimes (i size)
-        (goto-char (1+ i))
-        (let ((autopair-inserted (aref input i)))
-          (when (and (not (eq autopair-inserted ?-))
-                     (funcall predicate) (aset result i ?y)))))
-      result))
+                      extractor-or-predicate)
+    (if (stringp before) (insert before))
+    (cond ((and (symbolp extractor-or-predicate)
+                (get extractor-or-predicate 'autopair-test-charwise-predicate))
+           (let* ((size (1- (point-max)))
+                  (result (make-string size ?-)))
+             (dotimes (i size)
+               (goto-char (1+ i))
+               (let ((autopair-inserted (aref input i)))
+                 (when (and (not (eq autopair-inserted ?-))
+                            (funcall extractor-or-predicate) (aset result i ?y)))))
+             result))
+          (t
+           (funcall before)
+           (if (functionp input)
+               (funcall input)
+             (let ((last-command-event (aref input 0)))
+               (call-interactively (key-binding input) nil)
+               (autopair-post-command-handler)))
+           (funcall extractor-or-predicate))))
 
 (defun autopair-run-tests (&optional suite)
   (interactive)
@@ -133,34 +174,49 @@
         (failed 0))
     (with-output-to-temp-buffer "*autopair-tests*"
       (dolist (spec (or suite (append autopair-tests
-                                      autopair-extra-tests)))
-        (condition-case err
-            (progn (assert (equal
-                            (condition-case nil
-                                (with-temp-buffer
-                                  (autopair-mode t)
-                                  (emacs-lisp-mode)
-                                  (setq autopair-extra-pairs nil
-                                        autopair-dont-pair nil
-                                        autopair-handle-action-fns nil
-                                        autopair-handle-wrap-action-fns nil)
-                                  (eval `(let ,(fifth spec)
-                                           (autopair-test (first spec)
-                                                          (second spec)
-                                                          (third spec)))))
-                                (error "error"))
-                            (fourth spec))
-                           'show-args
-                           (format "test \"%s\" for input %s returned %%s instead of %s\n"
-                                   (first spec)
-                                   (second spec)
-                                   (fourth spec)))
-                   (incf passed))
-          (error (progn
-                   (princ (cadr err))
-                   (incf failed))))
-        )
-      (princ (format "\n\n%s tests total, %s pass, %s failures"
+                                      autopair-extra-tests
+                                      autopair-autowrap-tests)))
+        (let* ((fspec (fourth spec))
+               (expected (or (and (functionp fspec) (funcall fspec))
+                             fspec
+                             t))
+               (actual (condition-case e
+                           (with-current-buffer (generate-new-buffer "*autopair-test*")
+                             (emacs-lisp-mode)
+                             (autopair-mode 1)
+                             (transient-mark-mode 1)
+                             (setq autopair-extra-pairs nil
+                                   autopair-dont-pair nil
+                                   autopair-handle-action-fns nil
+                                   autopair-handle-wrap-action-fns nil)
+                             (eval `(let ,(fifth spec)
+                                      (autopair-test (first spec)
+                                                     (second spec)
+                                                     (third spec)))))
+                         (error (error e)))))
+          (condition-case err
+              (progn (assert (equal actual expected)
+                             'show-args
+                             (format "test \"%s\" for input %s returned %s instead of %s\n"
+                                     (first spec)
+                                     (second spec)
+                                     actual
+                                     expected))
+                     (incf passed))
+            (error (progn
+                     (princ (cadr err))
+                     (incf failed))))))
+      (princ (format "%s%s tests total, %s pass, %s failures"
+                     (or (and (zerop failed) "") "\n\n")
                      (+ passed failed)
                      passed
-                     failed)))))
+                     failed)))
+    (when noninteractive
+      (with-current-buffer "*autopair-tests*"
+        (princ (buffer-substring-no-properties (point-min) (point-max))))
+      (kill-emacs failed))))
+
+
+(provide 'autopair-tests)
+;;; autopair-tests.el ends here
+

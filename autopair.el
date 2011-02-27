@@ -101,7 +101,7 @@
 ;; For lisp-programming you might also like `autopair-skip-whitespace'.
 ;;
 ;; For further customization have a look at `autopair-dont-pair',
-;; `autopair-handle-action-fns' and `autopair-extra-pair'.
+;; `autopair-handle-action-fns' and `autopair-extra-pairs'.
 ;;
 ;; `autopair-dont-pair' lets you define special cases of characters
 ;; you don't want paired.  Its default value skips pairing
@@ -335,6 +335,7 @@ For now, simply returns `last-command-event'"
            (define-key map (kbd "<backspace>") 'autopair-backspace)
            (define-key map [backspace] 'autopair-backspace)
            (define-key map (kbd "DEL") 'autopair-backspace)
+           (define-key map [return] 'autopair-newline)
            (define-key map (kbd "RET") 'autopair-newline)
            (dotimes (char 256) ;; only searches the first 256 chars,
              ;; TODO: is this enough/toomuch/stupid?
@@ -382,7 +383,7 @@ For now, simply returns `last-command-event'"
          (setq autopair-action nil)
          (setq autopair-wrap-action nil)
          (add-hook 'emulation-mode-map-alists 'autopair-emulation-alist 'append)
-         (add-hook 'post-command-hook 'autopair-post-command-handler 'append 'local))
+         (add-hook 'post-command-hook 'autopair-post-command-handler nil 'local))
         (t
          (setq autopair-emulation-alist nil)
          (remove-hook 'emulation-mode-map-alists 'autopair-emulation-alist)
@@ -444,16 +445,24 @@ A list of four elements is returned:
                              pair-list))
                    (remove-if-not #'listp autopair-extra-pairs)))))))
 
+(unless (fboundp 'region-active-p)
+  (defun region-active-p ()
+    "Predicate missing in emacs 22" 
+    (and transient-mark-mode mark-active)))
+
 (defun autopair-calculate-wrap-action ()
   (when (region-active-p)
+    (when (> (point) (mark))
+      (exchange-point-and-mark))
     (save-excursion
       (let* ((region-before (cons (region-beginning)
                                   (region-end)))
              (point-before (point))
              (start-syntax (syntax-ppss (car region-before)))
              (end-syntax   (syntax-ppss (cdr region-before))))
-        (when (and (eq (nth 0 start-syntax) (nth 0 end-syntax))
-                   (eq (nth 3 start-syntax) (nth 3 end-syntax)))
+        (when (or (not (eq autopair-autowrap 'help-balance))
+                  (and (eq (nth 0 start-syntax) (nth 0 end-syntax))
+                       (eq (nth 3 start-syntax) (nth 3 end-syntax))))
           (list 'wrap (or (second autopair-action)
                           (autopair-find-pair autopair-inserted))
                 point-before
@@ -481,10 +490,11 @@ A list of four elements is returned:
           (blink-matching-paren (not autopair-action)))
       (call-interactively beyond-autopair))))
 
-(defvar autopair-autowrap nil
+(defvar autopair-autowrap 'help-balance
   "If non-nil autopair attempts to wrap the selected region.
 
-This is also done in an optimistic \"try-to-balance\" fashion.")
+This is also done in an optimistic \"try-to-balance\" fashion.
+Set this to to 'help-balance to be more criterious when wrapping.")
 
 (defvar autopair-skip-whitespace nil
   "If non-nil also skip over whitespace when skipping closing delimiters.
@@ -663,11 +673,15 @@ returned) and uplisting stops there."
   (interactive)
   (setq autopair-inserted (autopair-calculate-inserted))
   (let ((pair (autopair-find-pair (char-before))))
-    (when (eq (char-after) pair)
+    (when (and pair
+               (eq (char-syntax pair) ?\))
+               (eq (char-after) pair))
       (setq autopair-action (list 'newline pair (point))))
     (autopair-fallback (kbd "RET"))))
 (put 'autopair-newline 'function-documentation
-     '(concat "Possibly insert two newlines and place point after the first, indented.\n\n"
+     '(concat "Do a smart newline when right between parenthesis.\n
+In other words, insert an extra newline along with the one inserted normally
+by this command. Then place point after the first, indented.\n\n"
               (autopair-document-bindings (kbd "RET"))))
 
 (defun autopair-skip-p ()
@@ -867,49 +881,28 @@ returned) and uplisting stops there."
   "Default handler for the wrapping action in `autopair-wrap'"
   (condition-case err
       (when (eq 'wrap action)
-        (let ((reverse-selected (= (car region-before) pos-before)))
+        (let ((delete-active-region nil))
           (cond
            ((eq 'opening (first autopair-action))
-            ;; (message "wrap-opening!")
-            (cond (reverse-selected
-                   (goto-char (1+ (cdr region-before)))
-                   (insert pair)
-                   (autopair-blink)
-                   (goto-char (1+ (car region-before))))
-                  (t
-                   (delete-backward-char 1)
-                   (insert pair)
-                   (goto-char (car region-before))
-                   (insert autopair-inserted)))
-            (setq autopair-action nil) )
+            (goto-char (1+ (cdr region-before)))
+            (insert pair)
+            (autopair-blink)
+            (goto-char (1+ (car region-before))))
            (;; wraps
             (eq 'closing (first autopair-action))
-            ;; (message "wrap-closing!")
-            (cond (reverse-selected
-                   (delete-backward-char 1)
-                   (insert pair)
-                   (goto-char (1+ (cdr region-before)))
-                   (insert autopair-inserted))
-                  (t
-                   (goto-char (car region-before))
-                   (insert pair)
-                   (autopair-blink)
-                   (goto-char (+ 2 (cdr region-before)))))
-            (setq autopair-action nil))
+            (delete-backward-char 1)
+            (insert pair)
+            (goto-char (1+ (cdr region-before)))
+            (insert autopair-inserted))
            ((eq 'insert-quote (first autopair-action))
-            (cond (reverse-selected
-                   (goto-char (1+ (cdr region-before)))
-                   (insert pair)
-                   (autopair-blink))
-                  (t
-                   (goto-char (car region-before))
-                   (insert autopair-inserted)
-                   (autopair-blink)))
-            (setq autopair-action nil))
-           (reverse-selected
+            (goto-char (1+ (cdr region-before)))
+            (insert pair)
+            (autopair-blink))
+           (t
             (delete-backward-char 1)
             (goto-char (cdr region-before))
-            (insert autopair-inserted)))))
+            (insert autopair-inserted)))
+          (setq autopair-action nil)))
     (error
      (message "[autopair] Ignored error in `autopair-default-handle-wrap-action'"))))
 
@@ -943,10 +936,13 @@ returned) and uplisting stops there."
 ;; example latex paired-delimiter helper 
 ;;
 (defun autopair-latex-mode-paired-delimiter-action (action pair pos-before)
-  "Pair or skip latex's \"paired delimiter\" syntax in math mode."
+  "Pair or skip latex's \"paired delimiter\" syntax in math mode. Added AucText support, thanks Massimo Lauria"
   (when (eq action 'paired-delimiter)
     (when (eq (char-before) pair)
-      (if (and (eq (get-text-property pos-before 'face) 'tex-math)
+      (if (and (or
+                (eq (get-text-property pos-before 'face) 'tex-math)
+                (eq (get-text-property (- pos-before 1) 'face) 'font-latex-math-face)
+                (member 'font-latex-math-face (get-text-property (- pos-before 1) 'face)))
                (eq (char-after) pair))
           (cond ((and (eq (char-after) pair)
                       (eq (char-after (1+ (point))) pair))
