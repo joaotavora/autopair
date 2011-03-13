@@ -426,7 +426,7 @@ A list of four elements is returned:
                  :code
                  quick-syntax-info)))))
 
-(defun autopair-find-pair (delim)
+(defun autopair-find-pair (delim &optional closing)
   (when (and delim
              (integerp delim))
     (let ((syntax-entry (aref (syntax-table) delim)))
@@ -435,7 +435,8 @@ A list of four elements is returned:
             ((or (eq (syntax-class syntax-entry) (car (string-to-syntax "\"")))
                  (eq (syntax-class syntax-entry) (car (string-to-syntax "$"))))
              delim)
-            ((eq (syntax-class syntax-entry) (car (string-to-syntax ")")))
+            ((and (not closing)
+                  (eq (syntax-class syntax-entry) (car (string-to-syntax ")"))))
              (cdr syntax-entry))
             (autopair-extra-pairs
              (some #'(lambda (pair-list)
@@ -445,13 +446,8 @@ A list of four elements is returned:
                              pair-list))
                    (remove-if-not #'listp autopair-extra-pairs)))))))
 
-(unless (fboundp 'region-active-p)
-  (defun region-active-p ()
-    "Predicate missing in emacs 22" 
-    (and transient-mark-mode mark-active)))
-
 (defun autopair-calculate-wrap-action ()
-  (when (region-active-p)
+  (when (and transient-mark-mode mark-active)
     (when (> (point) (mark))
       (exchange-point-and-mark))
     (save-excursion
@@ -499,7 +495,7 @@ Set this to to 'help-balance to be more criterious when wrapping.")
 (defvar autopair-skip-whitespace nil
   "If non-nil also skip over whitespace when skipping closing delimiters.
 
-This will be most useful in lisp-like languages where you want
+If set to 'chomp, this will be most useful in lisp-like languages where you want
 lots of )))))....")
 
 (defvar autopair-blink (if (boundp 'blink-matching-paren)
@@ -663,7 +659,7 @@ returned) and uplisting stops there."
   (interactive)
   (setq autopair-inserted (autopair-calculate-inserted))
   (when (char-before)
-    (setq autopair-action (list 'backspace (autopair-find-pair (char-before)) (point))))
+    (setq autopair-action (list 'backspace (autopair-find-pair (char-before) 'closing) (point))))
   (autopair-fallback (kbd "DEL")))
 (put 'autopair-backspace 'function-documentation
      '(concat "Possibly delete a pair of paired delimiters.\n\n"
@@ -854,11 +850,13 @@ by this command. Then place point after the first, indented.\n\n"
                (when autopair-skip-whitespace
                  (setq skipped (save-excursion (skip-chars-forward "\s\n\t"))))
                (when (eq autopair-inserted (char-after (+ (point) skipped)))
+                 (backward-delete-char 1)
                  (unless (zerop skipped) (autopair-blink (+ (point) skipped)))
-                 (if (zerop skipped)
-                     (progn (backward-char 1) (delete-char 1) (forward-char))
-                   (delete-char (1+ skipped)))
-                 (autopair-blink-matching-open))))
+                 (if (eq autopair-skip-whitespace 'chomp)
+                     (delete-char skipped)
+                   (forward-char skipped))
+                 (forward-char))
+                 (autopair-blink-matching-open)))
             (;; autodelete closing delimiter
              (and (eq 'backspace action)
                   (eq pair (char-after (point))))
