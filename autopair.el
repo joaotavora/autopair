@@ -195,7 +195,12 @@ criterious when skipping.")
   syntax table.")
 
 (defvar autopair-dont-activate nil
-  "If non-nil `autopair-global-mode' does not activate in buffer")
+  "Control activation of `autopair-global-mode'.
+
+Set this to a non-nil value to skip activation of `autopair-mode'
+in certain contexts.  If however the value satisfies `functionp'
+and is a function of no arguments, the function is called and it is
+the return value that decides.")
 (make-variable-buffer-local 'autopair-dont-activate)
 
 (defvar autopair-extra-pairs nil
@@ -321,7 +326,11 @@ For now, simply returns `last-command-event'"
 ;;
 (define-globalized-minor-mode autopair-global-mode autopair-mode autopair-on)
 
-(defun autopair-on () (unless (or buffer-read-only autopair-dont-activate) (autopair-mode 1)))
+(defun autopair-on () (unless (or buffer-read-only
+                                  (if (functionp autopair-dont-activate)
+                                      (funcall autopair-dont-activate)
+                                    autopair-dont-activate))
+                                  (autopair-mode 1)))
 
 (define-minor-mode autopair-mode
   "Automagically pair braces and quotes like in TextMate."
