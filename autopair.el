@@ -472,7 +472,7 @@ A list of four elements is returned:
                 point-before
                 region-before))))))
 
-(defun autopair-original-binding ()
+(defun autopair-original-binding (fallback-keys)
   (or (key-binding `[,autopair-inserted])
       (key-binding (this-single-command-keys))
       (key-binding fallback-keys)))
@@ -480,8 +480,8 @@ A list of four elements is returned:
 (defun autopair-fallback (&optional fallback-keys)
   (let* ((autopair-emulation-alist nil)
          (beyond-cua (let ((cua--keymap-alist nil))
-                       (autopair-original-binding)))
-         (beyond-autopair (autopair-original-binding)))
+                       (autopair-original-binding fallback-keys)))
+         (beyond-autopair (autopair-original-binding fallback-keys)))
     (when autopair-autowrap
       (setq autopair-wrap-action (autopair-calculate-wrap-action)))
     
