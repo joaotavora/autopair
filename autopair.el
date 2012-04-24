@@ -92,8 +92,7 @@
 ;; wrap the selection region with the delimiters you're trying to
 ;; insert. This is done conditionally based of syntaxes of the two
 ;; ends of the selection region. It is compatible with `cua-mode's
-;; typing-deletes-selection behaviour. This feature is probably still
-;; a little unstable, hence `autopair-autowrap' defaults to nil.
+;; typing-deletes-selection behaviour. 
 ;;
 ;; If you find the paren-blinking annoying, turn `autopair-blink' to
 ;; nil.
