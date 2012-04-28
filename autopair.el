@@ -48,10 +48,15 @@
 ;; (add-hook 'c-mode-common-hook #'(lambda () (autopair-mode)))
 ;;
 ;; Alternatively, do use `autopair-global-mode' and create
-;; *exceptions* using the `autopair-dont-activate' local variable,
+;; *exceptions* using the `autopair-dont-activate' local variable (for
+;; emacs < 24), or just using (autopair-mode -1) (for emacs >= 24)
 ;; like:
 ;;
-;; (add-hook 'c-mode-common-hook #'(lambda () (setq autopair-dont-activate t)))
+;; (add-hook 'c-mode-common-hook
+;;           #'(lambda ()
+;;             (setq autopair-dont-activate t)
+;;             (autopair-mode -1)))
+;;
 ;;
 ;;; Use:
 ;;
@@ -326,10 +331,14 @@ For now, simply returns `last-command-event'"
 ;;
 (define-globalized-minor-mode autopair-global-mode autopair-mode autopair-on)
 
-(defun autopair-on () (unless (or buffer-read-only
-                                  (and (boundp 'autopair-dont-activate)
-                                       autopair-dont-activate))
-                        (autopair-mode 1)))
+(defun autopair-on ()
+  (unless (or buffer-read-only
+              (and (not (minibufferp))
+                   (string-match "^ \\*" (buffer-name)))
+              (eq major-mode 'sldb-mode) 
+              (and (boundp 'autopair-dont-activate)
+                   autopair-dont-activate))
+    (autopair-mode 1)))
 
 (define-minor-mode autopair-mode
   "Automagically pair braces and quotes like in TextMate."
