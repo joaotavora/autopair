@@ -16,11 +16,11 @@ should work even with extensions that redefine such keys.
 
   To try it out, download the [[http://autopair.googlecode.com/git/autopair.el][latest version]] and add to your *.emacs*:
 
-  #+begin_src
-  (add-to-list 'load-path "/path/to/autopair") ;; comment if autopair.el is in standard load path 
-  (require 'autopair)
-  (autopair-global-mode) ;; enable autopair in all buffers
-  #+end_src
+#+BEGIN_EXAMPLE
+(add-to-list 'load-path "/path/to/autopair") ;; comment if autopair.el is in standard load path 
+(require 'autopair)
+(autopair-global-mode) ;; enable autopair in all buffers
+#+END_EXAMPLE
 
 * Rationale
 
@@ -59,26 +59,26 @@ should work even with extensions that redefine such keys.
   of buffers, comment out the `autopair-global-mode` and turn on
   `autopair-mode` in some major-mode hook, like:
 
-  #+BEGIN_EXAMPLE
-  ;; use autopair just in c buffers
-   
-  (add-hook 'c-mode-common-hook 
-            #'(lambda () (autopair-mode)))
-  #+END_EXAMPLE
+#+BEGIN_EXAMPLE
+;; use autopair just in c buffers
+ 
+(add-hook 'c-mode-common-hook 
+          #'(lambda () (autopair-mode)))
+#+END_EXAMPLE
 
   Alternatively, do use `autopair-global-mode` and create _exceptions_
   using the major mode hooks (watch out for the change in behaviour
   emacs 24).
 
-  #+BEGIN_EXAMPLE
-  ;; use autopair everywhere but c buffers
-   
-  (add-hook 'c-mode-common-hook
-             #'(lambda () 
-                 (setq autopair-dont-activate t) ;; for emacsen < 24
-                 (autopair-mode -1))             ;; for emacsen >= 24
-  )
-  #+END_EXAMPLE
+#+BEGIN_EXAMPLE
+;; use autopair everywhere but c buffers
+ 
+(add-hook 'c-mode-common-hook
+           #'(lambda () 
+               (setq autopair-dont-activate t) ;; for emacsen < 24
+               (autopair-mode -1))             ;; for emacsen >= 24
+)
+#+END_EXAMPLE
 
 * More tricks
 
@@ -91,12 +91,12 @@ should work even with extensions that redefine such keys.
   character from being autopaired in C++ comments use this in your
   .emacs.
 
-  #+BEGIN_EXAMPLE
-  (add-hook 'c++-mode-hook
-            #'(lambda ()
-                 (push ?
-                       (getf autopair-dont-pair :comment))))
-  #+END_EXAMPLE
+#+BEGIN_EXAMPLE
+(add-hook 'c++-mode-hook
+          #'(lambda ()
+               (push ?
+                     (getf autopair-dont-pair :comment))))
+#+END_EXAMPLE
 
 
   *=autopair-handle-action-fns=* lets you write some emacs-lisp that
@@ -104,13 +104,13 @@ should work even with extensions that redefine such keys.
   something must be paired, skipped or deleted. To work with triple
   quoting in python mode, you can use this for example:
 
-  #+BEGIN_EXAMPLE
-  (add-hook 'python-mode-hook
-            #'(lambda ()
-                (setq autopair-handle-action-fns
-                      (list #'autopair-default-handle-action
-                            #'autopair-python-triple-quote-action))))
-  #+END_EXAMPLE
+#+BEGIN_EXAMPLE
+(add-hook 'python-mode-hook
+          #'(lambda ()
+              (setq autopair-handle-action-fns
+                    (list #'autopair-default-handle-action
+                          #'autopair-python-triple-quote-action))))
+#+END_EXAMPLE
 
   where =autopair-python-triple-quote-action= is an example of a
   user-written function (which is bundled in autopair.el).
@@ -123,24 +123,24 @@ should work even with extensions that redefine such keys.
   balancing at all. To have =<= and =>= pair in c++-mode buffers, but
   only in code, use:
 
-  #+BEGIN_EXAMPLE
-  (add-hook 'c++-mode-hook
-            #'(lambda ()
-                (push '(?< . ?>)
-                      (getf autopair-extra-pairs :code))))
-  #+END_EXAMPLE
+#+BEGIN_EXAMPLE
+(add-hook 'c++-mode-hook
+          #'(lambda ()
+              (push '(?< . ?>)
+                    (getf autopair-extra-pairs :code))))
+#+END_EXAMPLE
 
   if you program in emacs-lisp you might also like the following to
   pair backtick (*`*) and quote (*'*).
   
-  #+BEGIN_EXAMPLE
-  (add-hook 'emacs-lisp-mode-hook
-            #'(lambda ()
-                (push '(?` . ?')
-                      (getf autopair-extra-pairs :comment))
-                (push '(?` . ?')
-                      (getf autopair-extra-pairs :string))))
-  #+END_EXAMPLE
+#+BEGIN_EXAMPLE
+(add-hook 'emacs-lisp-mode-hook
+          #'(lambda ()
+              (push '(?` . ?')
+                    (getf autopair-extra-pairs :comment))
+              (push '(?` . ?')
+                    (getf autopair-extra-pairs :string))))
+#+END_EXAMPLE
 
 * Workarounds  
 
@@ -169,7 +169,6 @@ should work even with extensions that redefine such keys.
   autopaired/autoskipped in all situations; the decision to autopair
   or autoskip a brace is taken according to the following table:
    
-  #+BEGIN_EXAMPLE
    +---------+------------+-----------+-------------------+
    | 1234567 | autopair?  | autoskip? | notes             |
    +---------+------------+-----------+-------------------+
@@ -179,7 +178,6 @@ should work even with extensions that redefine such keys.
    +---------+------------+-----------+-------------------+
    |  ((())  |  yyyyyyy   |  -------  | too many openings |
    +---------+------------+-----------+-------------------+
-  #+END_EXAMPLE
    
   The table is read like this: in a buffer with 7 characters laid out
   like the first column, an "y" marks points where an opening brace is
