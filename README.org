@@ -3,10 +3,10 @@
 *Autopair* is an extension to the Emacs text editor that automatically
  pairs braces and quotes:
 
-  * Opening braces/quotes are autopaired;
-  * Closing braces/quotes are autoskipped;
-  * Backspacing an opening brace/quote autodeletes its pair.
-  * Newline between newly-opened brace pairs open an extra indented line.
+  - Opening braces/quotes are autopaired;
+  - Closing braces/quotes are autoskipped;
+  - Backspacing an opening brace/quote autodeletes its pair.
+  - Newline between newly-opened brace pairs open an extra indented line.
 
 Autopair works well across all Emacs major-modes, deduces from the
 language's syntax table which characters to pair, skip or delete. It
@@ -28,24 +28,24 @@ should work even with extensions that redefine such keys.
   minimally intrusive to my existing hacks and need very little
   customization. You might prefer it to the following:
 
-  * http://www.emacswiki.org/emacs/ParEdit
-  * http://code.google.com/p/emacs-textmate/
-  * http://github.com/ramblex/emacs-textmate
-  * http://svn.ruby-lang.org/repos/ruby/trunk/misc/ruby-electric.el (most of it)
-  * the options listed in http://www.emacswiki.org/emacs/AutoPairs
+  - http://www.emacswiki.org/emacs/ParEdit
+  - http://code.google.com/p/emacs-textmate/
+  - http://github.com/ramblex/emacs-textmate
+  - http://svn.ruby-lang.org/repos/ruby/trunk/misc/ruby-electric.el (most of it)
+  - the options listed in http://www.emacswiki.org/emacs/AutoPairs
 
   It also works with [[http://github.com/capitaomorte/yasnippet/][YASnippet]], another package I maintain.
 
 * Neat tricks
 
-  * *=autopair-autowrap=* tells autopair to automatically wrap the
+  - *=autopair-autowrap=* tells autopair to automatically wrap the
     selection region with the delimiters you're trying to insert.
 
-  * *=autopair-blink=* makes the cursor quickly blink over matching
+  - *=autopair-blink=* makes the cursor quickly blink over matching
     braces and quotes just inserted or skipped over. If you find this
     behaviour annoying, set this to nil.
 
-  * *=autopair-skip-whitespace=*, when set to non-nil, tells autopair to
+  - *=autopair-skip-whitespace=*, when set to non-nil, tells autopair to
     skip over whitespace when attempting to skip over a closing
     brace. If you set this to 'chomp, the whitespace is not only
     jumped over but also deleted.
