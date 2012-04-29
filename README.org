@@ -14,7 +14,7 @@ should work even with extensions that redefine such keys.
 
 * Installation and basic use:
 
-  To try it out, download the [[http://autopair.googlecode.com/git/autopair.el][latest version]] and add to your =.emacs=:
+  To try it out, download the [[https://raw.github.com/capitaomorte/autopair/master/autopair.el][latest version]] and add to your =.emacs=:
 
 #+BEGIN_EXAMPLE
 (add-to-list 'load-path "/path/to/autopair") ;; comment if autopair.el is in standard load path 
