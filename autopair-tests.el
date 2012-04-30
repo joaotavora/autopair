@@ -50,23 +50,29 @@
                           (aset result i ?y)))))
            (should (string= result ,expectation)))))))
 
-(defmacro define-autopair-functional-test (name fixture-fn input expected-text expected-point &optional bindings)
+(defmacro define-autopair-functional-test (name-or-name-and-ert-args fixture-fn input expected-text expected-point &optional bindings)
   (declare (indent defun))
-  `(ert-deftest ,(intern (concat "autopair-functional-test-" (symbol-name name))) ()
-     ,(format "%s: see test definition" name)
-     (with-temp-buffer
-       (let ,bindings
-         (autopair-mode 1)
-         (funcall ,fixture-fn)
-         (cond ((and (symbolp ,input)
-                     (commandp ,input))
-                (ert-simulate-command ,input))
-               ((stringp ,input)
-                (let ((last-command-event (aref ,input 0)))
-                  (call-interactively (key-binding ,input) nil)
-                  (autopair-post-command-handler))))
-         (should (string= (buffer-substring-no-properties (point-min) (point-max)) ,expected-text))
-         (should (eql (point) ,expected-point))))))
+  (let ((name name-or-name-and-ert-args)
+         (ert-args '()))
+    (when (listp name)
+      (setq ert-args (rest name))
+      (setq name (first name)))
+    `(ert-deftest ,(intern (concat "autopair-functional-test-" (symbol-name name))) ()
+       ,(format "%s: see test definition" name)
+       ,@ert-args
+       (with-temp-buffer
+         (let ,bindings
+           (autopair-mode 1)
+           (funcall ,fixture-fn)
+           (cond ((and (symbolp ,input)
+                       (commandp ,input))
+                  (ert-simulate-command ,input))
+                 ((stringp ,input)
+                  (let ((last-command-event (aref ,input 0)))
+                    (call-interactively (key-binding ,input) nil)
+                    (autopair-post-command-handler))))
+           (should (string= (buffer-substring-no-properties (point-min) (point-max)) ,expected-text))
+           (should (eql (point) ,expected-point)))))))
 
 ;; basic tests
 ;;
@@ -150,6 +156,27 @@
           (insert "hello") (set-mark (point)) (beginning-of-buffer)
           (exchange-point-and-mark))
   "(" "(hello)"  2)
+
+;; googlecode issue 49 (failing)
+(define-autopair-functional-test (autowrap-by-closing-inside-mixed-parens
+                                  :expected-result :failed)
+  #'(lambda ()
+      (insert "[hello]")
+      (set-mark 2)
+      (backward-char))
+  "}"
+  "[{hello}]"
+  10)
+
+(define-autopair-functional-test autowrap-by-opening-inside-mixed-parens
+  #'(lambda ()
+      (insert "[hello]")
+      (goto-char 2)
+      (set-mark 7))
+  "{"
+  "[{hello}]"
+  3)
+
 
 (provide 'autopair-tests)
 ;;; autopair-tests.el ends here
