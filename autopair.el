@@ -497,6 +497,7 @@ A list of four elements is returned:
     (setq this-original-command beyond-cua)
     ;; defer to "paredit-mode" if that is installed and running
     (when (and (featurep 'paredit)
+               (symbolp beyond-cua)
                (string-match "paredit" (symbol-name beyond-cua)))
       (setq autopair-action nil))
     (let ((cua-delete-selection (not autopair-autowrap))
@@ -1057,11 +1058,11 @@ by this command. Then place point after the first, indented.\n\n"
 (put 'autopair-newline 'delete-selection t)
 
 (defun autopair-should-autowrap ()
-  (let ((name (symbol-name this-command)))
-    (and autopair-mode
-         (not (eq this-command 'autopair-backspace))
-         (string-match "^autopair" (symbol-name this-command))
-         (autopair-calculate-wrap-action))))
+  (and autopair-mode
+       (not (eq this-command 'autopair-backspace))
+       (symbolp this-command)
+       (string-match "^autopair" (symbol-name this-command))
+       (autopair-calculate-wrap-action)))
 
 (defadvice cua--pre-command-handler-1 (around autopair-override activate)
   "Don't actually do anything if autopair is about to autowrap. "
