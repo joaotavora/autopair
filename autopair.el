@@ -195,8 +195,10 @@ Set this to 'always to always skip, or 'help-balance to be more
 criterious when skipping.")
 
 (defvar autopair-emulation-alist nil
-  "A dinamic keymap for autopair set mostly from the current
-  syntax table.")
+  "A keymap alist for adding to `emulation-mode-map-alists'.
+
+The alist contains single (t MAP) association, where MAP is a
+dynamic keymap set mostly from the major mode's syntax table.")
 
 (unless (> emacs-major-version 23)
   (defvar autopair-dont-activate nil
