@@ -1111,6 +1111,15 @@ by this command. Then place point after the first, indented.\n\n"
   (unless (autopair-should-autowrap) ad-do-it))
 
 
+;; hihi
+;;
+(eval-when '(eval)
+  (defun autopair-exterminate-package ()
+    (interactive)
+    (mapatoms #'(lambda (sym)
+                  (when (string-match "^autopair-" (symbol-name sym))
+                    (unintern sym))))))
+
 (provide 'autopair)
 ;;; autopair.el ends here
 ;;
