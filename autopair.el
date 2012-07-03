@@ -333,80 +333,116 @@ For now, simply returns `last-command-event'"
 ;;
 (define-globalized-minor-mode autopair-global-mode autopair-mode autopair-on)
 
+(when (>= emacs-major-version 24)
+  (defvar autopair-global-mode-emacs24-hack-flag nil)
+  (defadvice autopair-global-mode-enable-in-buffers (before autopairs-global-mode-emacs24-hack activate)
+    "Monkey patch for recent emacsen 24.
+
+It's impossible for a globalized minor-mode to see variables set
+by major-mode-hooks. However, the auto-generated
+`autopair-mode-enable-in-buffers' does run after the
+major-mode-hooks.
+
+This advice makes sure the emulation keybindings are (re)set
+there. It relies on the fact that
+`autopair-mode-enable-in-buffers' is still called again in
+`after-change-major-mode-hook' (but the autopair-mode has already
+been turned on before the major-mode hooks kicked in).
+
+We want this advice to only kick in the *second* call to
+`autopair-mode-enable-in-buffers'."
+    (dolist (buf autopair-global-mode-buffers)
+      (when (buffer-live-p buf)
+        (with-current-buffer buf
+          (when (and autopair-mode
+                     (not autopair-global-mode-emacs24-hack-flag))
+            (autopair-set-emulation-bindings)
+            (set (make-local-variable 'autopair-global-mode-emacs24-hack-flag) t)))))))
+
 (defun autopair-on ()
   (unless (or buffer-read-only
               (and (not (minibufferp))
                    (string-match "^ \\*" (buffer-name)))
-              (eq major-mode 'sldb-mode) 
-              (and (boundp 'autopair-dont-activate)
-                   autopair-dont-activate))
-    (autopair-mode 1)))
+              (eq major-mode 'sldb-mode)
+              (and (< emacs-major-version 24)
+                   (boundp 'autopair-dont-activate)
+                   autopair-dont-activate)
+    (autopair-mode 1))))
 
 (define-minor-mode autopair-mode
   "Automagically pair braces and quotes like in TextMate."
   nil " pair" nil
   (cond (autopair-mode
-         ;; Setup the dynamic emulation keymap
+         ;; Setup the dynamic emulation keymap, i.e. sets `autopair-emulation-alist'
          ;;
-         (let ((map (make-sparse-keymap)))
-           (define-key map [remap delete-backward-char] 'autopair-backspace)
-           (define-key map [remap backward-delete-char-untabify] 'autopair-backspace)
-           (define-key map (kbd "<backspace>") 'autopair-backspace)
-           (define-key map [backspace] 'autopair-backspace)
-           (define-key map (kbd "DEL") 'autopair-backspace)
-           (define-key map [return] 'autopair-newline)
-           (define-key map (kbd "RET") 'autopair-newline)
-           (dotimes (char 256) ;; only searches the first 256 chars,
-             ;; TODO: is this enough/toomuch/stupid?
-             (unless (member char
-                             (getf autopair-dont-pair :never))
-               (let* ((syntax-entry (aref (syntax-table) char))
-                      (class (and syntax-entry
-                                  (syntax-class syntax-entry)))
-                      (pair (and syntax-entry
-                                 (cdr syntax-entry))))
-                 (cond ((eq class (car (string-to-syntax "(")))
-                        ;; syntax classes "opening parens" and "close parens"
-                        (define-key map (string char) 'autopair-insert-opening)
-                        (define-key map (string pair) 'autopair-skip-close-maybe))
-                       ((eq class (car (string-to-syntax "\"")))
-                        ;; syntax class "string quote
-                        (define-key map (string char) 'autopair-insert-or-skip-quote))
-                       ((eq class (car (string-to-syntax "$")))
-                        ;; syntax class "paired-delimiter" 
-                        ;;
-                        ;; Apropos this class, see Issues 18, 25 and
-                        ;; elisp info node "35.2.1 Table of Syntax
-                        ;; Classes". The fact that it supresses
-                        ;; syntatic properties in the delimited region
-                        ;; dictates that deciding to autopair/autoskip
-                        ;; can't really be as clean as the string
-                        ;; delimiter.
-                        ;;
-                        ;; Apparently, only `TeX-mode' uses this, so
-                        ;; the best is to bind this to
-                        ;; `autopair-insert-or-skip-paired-delimiter'
-                        ;; which defers any decision making to
-                        ;; mode-specific post-command handler
-                        ;; functions.
-                        ;;
-                        (define-key map (string char) 'autopair-insert-or-skip-paired-delimiter))))))
-           ;; read `autopair-extra-pairs'
-           (dolist (pairs-list (remove-if-not #'listp autopair-extra-pairs))
-             (dolist (pair pairs-list)
-               (define-key map (string (car pair)) 'autopair-extra-insert-opening)
-               (define-key map (string (cdr pair)) 'autopair-extra-skip-close-maybe)))
-
-           (set (make-local-variable 'autopair-emulation-alist) (list (cons t map))))
-
+         (autopair-set-emulation-bindings)
+         (add-to-list 'emulation-mode-map-alists 'autopair-emulation-alist 'append)
+         ;; Init important vars
+         ;;
          (setq autopair-action nil)
          (setq autopair-wrap-action nil)
-         (add-hook 'emulation-mode-map-alists 'autopair-emulation-alist 'append)
+         ;; Add the post command handler
+         ;;
          (add-hook 'post-command-hook 'autopair-post-command-handler nil 'local))
         (t
-         (setq autopair-emulation-alist nil)
-         (remove-hook 'emulation-mode-map-alists 'autopair-emulation-alist)
+         (set (make-local-variable 'autopair-emulation-alist) nil)
          (remove-hook 'post-command-hook         'autopair-post-command-handler 'local))))
+
+(defun autopair-set-emulation-bindings ()
+  "Setup keymap MAP with keybindings based on the major-mode's
+syntax table and the local value of `autopair-extra-pairs'."
+
+  (let ((map (make-sparse-keymap)))
+    (define-key map [remap delete-backward-char] 'autopair-backspace)
+    (define-key map [remap backward-delete-char-untabify] 'autopair-backspace)
+    (define-key map (kbd "<backspace>") 'autopair-backspace)
+    (define-key map [backspace] 'autopair-backspace)
+    (define-key map (kbd "DEL") 'autopair-backspace)
+    (define-key map [return] 'autopair-newline)
+    (define-key map (kbd "RET") 'autopair-newline)
+    (dotimes (char 256) ;; only searches the first 256 chars,
+      ;; TODO: is this enough/toomuch/stupid?
+      (unless (member char
+                      (getf autopair-dont-pair :never))
+        (let* ((syntax-entry (aref (syntax-table) char))
+               (class (and syntax-entry
+                           (syntax-class syntax-entry)))
+               (pair (and syntax-entry
+                          (cdr syntax-entry))))
+          (cond ((eq class (car (string-to-syntax "(")))
+                 ;; syntax classes "opening parens" and "close parens"
+                 (define-key map (string char) 'autopair-insert-opening)
+                 (define-key map (string pair) 'autopair-skip-close-maybe))
+                ((eq class (car (string-to-syntax "\"")))
+                 ;; syntax class "string quote
+                 (define-key map (string char) 'autopair-insert-or-skip-quote))
+                ((eq class (car (string-to-syntax "$")))
+                 ;; syntax class "paired-delimiter"
+                 ;;
+                 ;; Apropos this class, see Issues 18, 25 and
+                 ;; elisp info node "35.2.1 Table of Syntax
+                 ;; Classes". The fact that it supresses
+                 ;; syntatic properties in the delimited region
+                 ;; dictates that deciding to autopair/autoskip
+                 ;; can't really be as clean as the string
+                 ;; delimiter.
+                 ;;
+                 ;; Apparently, only `TeX-mode' uses this, so
+                 ;; the best is to bind this to
+                 ;; `autopair-insert-or-skip-paired-delimiter'
+                 ;; which defers any decision making to
+                 ;; mode-specific post-command handler
+                 ;; functions.
+                 ;;
+                 (define-key map (string char) 'autopair-insert-or-skip-paired-delimiter))))))
+    ;; read `autopair-extra-pairs'
+    ;;
+    (dolist (pairs-list (remove-if-not #'listp autopair-extra-pairs))
+      (dolist (pair pairs-list)
+        (define-key map (string (car pair)) 'autopair-extra-insert-opening)
+        (define-key map (string (cdr pair)) 'autopair-extra-skip-close-maybe)))
+
+    (set (make-local-variable 'autopair-emulation-alist) (list (cons t map)))))
 
 ;; helper functions
 ;;
