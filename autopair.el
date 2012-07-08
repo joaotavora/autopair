@@ -460,6 +460,7 @@ syntax table and the local value of `autopair-extra-pairs'."
   "A syntax table with syntax \"w\" for every char")
 
 (defun autopair-just-for-delim-syntax-table (delim)
+  "A syntax table that has \"parenthesis\" syntax just for DELIM."
   (let* ((syntax-entry (aref (syntax-table) delim))
          (other-syntax-entry (and syntax-entry
                                   (cdr syntax-entry)
@@ -527,22 +528,26 @@ A list of four elements is returned:
                    (remove-if-not #'listp autopair-extra-pairs)))))))
 
 (defun autopair-calculate-wrap-action ()
-  (when (and transient-mark-mode mark-active)
-    (when (> (point) (mark))
-      (exchange-point-and-mark))
-    (save-excursion
+  (or autopair-wrap-action
+      (and transient-mark-mode
+           mark-active
+           (autopair-calculate-wrap-action-1))))
+
+(defun autopair-calculate-wrap-action-1 ()
+  (when (> (point) (mark)) (exchange-point-and-mark))
+  (save-excursion
       (let* ((region-before (cons (region-beginning)
-                                  (region-end)))
-             (point-before (point))
-             (start-syntax (syntax-ppss (car region-before)))
-             (end-syntax   (syntax-ppss (cdr region-before))))
-        (when (or (not (eq autopair-autowrap 'help-balance))
-                  (and (eq (nth 0 start-syntax) (nth 0 end-syntax))
-                       (eq (nth 3 start-syntax) (nth 3 end-syntax))))
-          (list 'wrap (or (second autopair-action)
-                          (autopair-find-pair autopair-inserted))
-                point-before
-                region-before))))))
+                                (region-end)))
+           (point-before (point))
+           (start-syntax (syntax-ppss (car region-before)))
+           (end-syntax   (syntax-ppss (cdr region-before))))
+      (when (or (not (eq autopair-autowrap 'help-balance))
+                (and (eq (nth 0 start-syntax) (nth 0 end-syntax))
+                     (eq (nth 3 start-syntax) (nth 3 end-syntax))))
+        (list 'wrap (or (second autopair-action)
+                        (autopair-find-pair autopair-inserted))
+              point-before
+              region-before)))))
 
 (defun autopair-original-binding (fallback-keys)
   (or (key-binding `[,autopair-inserted])
@@ -554,8 +559,6 @@ A list of four elements is returned:
          (beyond-cua (let ((cua--keymap-alist nil))
                        (autopair-original-binding fallback-keys)))
          (beyond-autopair (autopair-original-binding fallback-keys)))
-    (when autopair-autowrap
-      (setq autopair-wrap-action (autopair-calculate-wrap-action)))
 
     (setq this-original-command beyond-cua)
     ;; defer to "paredit-mode" if that is installed and running
@@ -611,7 +614,7 @@ original command as if autopair didn't exist"
                  (getf blacklist exception-where-sym)))))
 
 (defun autopair-up-list (syntax-info &optional closing)
-  "Try to uplist as much as possible, moving point.
+  "Try to uplist backward as much as possible, moving point.
 
 Return nil if something prevented uplisting.
 
@@ -629,8 +632,7 @@ returned) and uplisting stops there."
         (while (and (> howmany 0)
                     (condition-case err
                         (progn
-                          (scan-sexps (point) (- (point-max)))
-                          (error err))
+                          (scan-sexps (point) (- (point-max))))
                       (error (let ((opening (and closing
                                                  (autopair-find-pair closing))))
                                (setq retval (cons (fourth err)
@@ -646,7 +648,8 @@ returned) and uplisting stops there."
 ;;
 (defun autopair-insert-or-skip-quote ()
   (interactive)
-  (setq autopair-inserted (autopair-calculate-inserted))
+  (setq autopair-inserted (autopair-calculate-inserted)
+        autopair-wrap-action (autopair-calculate-wrap-action))
   (let* ((syntax-triplet (autopair-syntax-ppss))
          (syntax-info (first syntax-triplet))
          (where-sym (second syntax-triplet))
@@ -718,7 +721,8 @@ returned) and uplisting stops there."
 
 (defun autopair-insert-opening ()
   (interactive)
-  (setq autopair-inserted (autopair-calculate-inserted))
+  (setq autopair-inserted (autopair-calculate-inserted)
+        autopair-wrap-action (autopair-calculate-wrap-action))
   (when (autopair-pair-p)
     (setq autopair-action (list 'opening (autopair-find-pair autopair-inserted) (point))))
   (autopair-fallback))
@@ -728,8 +732,12 @@ returned) and uplisting stops there."
 
 (defun autopair-skip-close-maybe ()
   (interactive)
-  (setq autopair-inserted (autopair-calculate-inserted))
-  (when (autopair-skip-p)
+  (setq autopair-inserted (autopair-calculate-inserted)
+        autopair-wrap-action (autopair-calculate-wrap-action))
+  (when (if autopair-wrap-action
+            (with-syntax-table (autopair-just-for-delim-syntax-table autopair-inserted)
+              (autopair-skip-p))
+          (autopair-skip-p))
     (setq autopair-action (list 'closing (autopair-find-pair autopair-inserted) (point))))
   (autopair-fallback))
 (put 'autopair-skip-close-maybe 'function-documentation
@@ -794,7 +802,8 @@ by this command. Then place point after the first, indented.\n\n"
            t))))
 
 (defun autopair-pair-p ()
-  (let* ((syntax-triplet (autopair-syntax-ppss))
+  (with-syntax-table (autopair-just-for-delim-syntax-table autopair-inserted)
+    (let* ((syntax-triplet (autopair-syntax-ppss))
          (syntax-info (first syntax-triplet))
          (where-sym (second syntax-triplet))
          (orig-point (point)))
@@ -814,50 +823,16 @@ by this command. Then place point after the first, indented.\n\n"
                                  (forward-sexp))
                                t)
                            (error
-                            ;; if `forward-sexp' (called byp
-                            ;; `autopair-forward') returned an error.
-                            ;; typically we don't want to autopair,
-                            ;; unless one of the following occurs:
+                            ;; if `forward-sexp' returned an error.
+                            ;; We probably don't want to autopair,
+                            ;; unless the expressions end prematurely
+                            ;; (too many openings)
                             ;;
-                            (cond (;; 1. The error is *not* of type "containing
-                                   ;;    expression ends prematurely", which means
-                                   ;;    we're in the "too-many-openings" situation
-                                   ;;    and thus want to autopair.
-                                   (not (string-match "prematurely" (second err)))
-                                   t)
-                                  (;; 2. We stopped at a closing parenthesis. Do
-                                   ;; autopair if we're in a mixed parens situation,
-                                   ;; i.e. the last list jumped over was started by
-                                   ;; the paren we're trying to match
-                                   ;; (`autopair-inserted') and ended by a different
-                                   ;; parens, or the closing paren we stopped at is
-                                   ;; also different from the expected. The second
-                                   ;; `scan-lists' places point at the closing of the
-                                   ;; last list we forwarded over.
-                                   ;;
-                                   (condition-case err
-                                       (prog1
-                                           (eq (char-after (scan-lists (point) -1 0))
-                                               autopair-inserted)
-                                         (goto-char (scan-lists (point) -1 -1)))
-                                     (error t))
-
-                                   (or
-                                    ;; mixed () ] for input (, yes autopair
-                                    (not (eq expected-closing (char-after (third err))))
-                                    ;; mixed (] ) for input (, yes autopair
-                                    (not (eq expected-closing (char-after (point))))
-                                    ;; ()) for input (, not mixed
-                                    ;; hence no autopair
-                                    ))
-                                  (t
-                                   nil))
-                            ;; (eq (fourth err) (point-max))
-                            ))))))
+                            (not (string-match "prematurely" (second err)))))))))
                ((eq autopair-pair-criteria 'always)
                 t)
                (t
-                (not (autopair-escaped-p)))))))
+                (not (autopair-escaped-p syntax-info))))))))
 
 ;; post-command-hook stuff
 ;;
@@ -866,7 +841,6 @@ by this command. Then place point after the first, indented.\n\n"
 `autopair-wrap-action'. "
   (when (and autopair-wrap-action
              (notany #'null autopair-wrap-action))
-
     (if autopair-handle-wrap-action-fns
         (condition-case err
             (mapc #'(lambda (fn)
@@ -1043,7 +1017,8 @@ by this command. Then place point after the first, indented.\n\n"
 
 (defun autopair-extra-insert-opening ()
   (interactive)
-  (setq autopair-inserted (autopair-calculate-inserted))
+  (setq autopair-inserted (autopair-calculate-inserted)
+        autopair-wrap-action (autopair-calculate-wrap-action))
   (when (autopair-extra-pair-p)
     (setq autopair-action (list 'opening (autopair-find-pair autopair-inserted) (point))))
   (autopair-fallback))
@@ -1053,7 +1028,8 @@ by this command. Then place point after the first, indented.\n\n"
 
 (defun autopair-extra-skip-close-maybe ()
   (interactive)
-  (setq autopair-inserted (autopair-calculate-inserted))
+  (setq autopair-inserted (autopair-calculate-inserted)
+        autopair-wrap-action (autopair-calculate-wrap-action))
   (when (autopair-extra-skip-p)
     (setq autopair-action (list 'closing autopair-inserted (point))))
   (autopair-fallback))
@@ -1093,7 +1069,8 @@ by this command. Then place point after the first, indented.\n\n"
 (defun autopair-insert-or-skip-paired-delimiter ()
   " insert or skip a character paired delimiter"
   (interactive)
-  (setq autopair-inserted (autopair-calculate-inserted))
+  (setq autopair-inserted (autopair-calculate-inserted)
+        autopair-wrap-action (autopair-calculate-wrap-action))
   (setq autopair-action (list 'paired-delimiter autopair-inserted (point)))
   (autopair-fallback))
 
@@ -1121,11 +1098,7 @@ by this command. Then place point after the first, indented.\n\n"
 (put 'autopair-newline 'delete-selection t)
 
 (defun autopair-should-autowrap ()
-  (and autopair-mode
-       (not (eq this-command 'autopair-backspace))
-       (symbolp this-command)
-       (string-match "^autopair" (symbol-name this-command))
-       (autopair-calculate-wrap-action)))
+  (setq autopair-wrap-action (autopair-calculate-wrap-action-maybe)))
 
 (defadvice cua--pre-command-handler-1 (around autopair-override activate)
   "Don't actually do anything if autopair is about to autowrap. "
@@ -1134,7 +1107,6 @@ by this command. Then place point after the first, indented.\n\n"
 (defadvice delete-selection-pre-hook (around autopair-override activate)
   "Don't actually do anything if autopair is  about to autowrap. "
   (unless (autopair-should-autowrap) ad-do-it))
-
 
 
 ;; hihi
@@ -1145,6 +1117,13 @@ by this command. Then place point after the first, indented.\n\n"
     (mapatoms #'(lambda (sym)
                   (when (string-match "^autopair-" (symbol-name sym))
                     (unintern sym))))))
+
+(defun autopair-log (fmt &rest args)
+  (with-current-buffer (get-buffer-create "*autopair-log*")
+    (insert (apply #'format fmt args))
+    (insert "\n")
+    (end-of-buffer)
+    (recenter)))
 
 (provide 'autopair)
 ;;; autopair.el ends here
