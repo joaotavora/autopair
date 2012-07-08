@@ -524,6 +524,7 @@ A list of four elements is returned:
       (key-binding (this-single-command-keys))
       (key-binding fallback-keys)))
 
+(defvar this-autopair-command nil)
 (defun autopair-fallback (&optional fallback-keys)
   (let* ((autopair-emulation-alist nil)
          (beyond-cua (let ((cua--keymap-alist nil))
@@ -532,6 +533,7 @@ A list of four elements is returned:
     (when autopair-autowrap
       (setq autopair-wrap-action (autopair-calculate-wrap-action)))
 
+    (setq this-autopair-command this-command)
     (setq this-original-command beyond-cua)
     ;; defer to "paredit-mode" if that is installed and running
     (when (and (featurep 'paredit)
@@ -931,13 +933,12 @@ by this command. Then place point after the first, indented.\n\n"
     (error
      (message "[autopair] Ignored error in `autopair-default-handle-action'"))))
 
+
 (defun autopair-default-handle-wrap-action (action pair pos-before region-before)
   "Default handler for the wrapping action in `autopair-wrap'"
   (condition-case err
       (when (eq 'wrap action)
-        (let ((delete-active-region nil)
-              (this-autopair-command (and (symbolp this-command)
-                                          this-command)))
+        (let ((delete-active-region nil))
           (cond
            ((member this-autopair-command '(autopair-insert-opening
                                             autopair-extra-insert-opening))
