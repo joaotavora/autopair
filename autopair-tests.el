@@ -26,29 +26,40 @@
 (require 'autopair)
 (require 'ert)
 (require 'ert-x)
+;;;; Unit tests
+;;;;
+;;; Nothing we can call unit tests in this branch...
 
-
-(defmacro define-autopair-simple-predicate-test (name fixture input predicate expectation &optional bindings)
+;;;; Functional tests
+;;;;
+(defmacro define-autopair-simple-predicate-test (name-or-name-and-ert-args fixture input predicate expectation &optional bindings)
   (declare (indent defun))
-  `(ert-deftest ,(intern (concat "autopair-simple-predicate-test-" (symbol-name name))) ()
-     ,(format "With \"%s\", call `%s' for \"%s\". Should get \"%s\""
-              fixture
-              (symbol-name predicate)
-              input
-              expectation)
-     (with-temp-buffer
-       (let ,bindings
-         (autopair-mode 1)
-         (insert ,fixture)
-         (let* ((size (1- (point-max)))
-                (result (make-string size ?-)))
-           (dotimes (i size)
-             (goto-char (1+ i))
-             (let ((autopair-inserted (aref ,input i)))
-               (when (and (not (eq autopair-inserted ?-))
-                          (funcall #',predicate)
-                          (aset result i ?y)))))
-           (should (string= result ,expectation)))))))
+  (let ((name name-or-name-and-ert-args)
+        (ert-args '()))
+    (when (listp name)
+      (setq ert-args (rest name))
+      (setq name (first name)))
+    `(ert-deftest ,(intern (concat "autopair-simple-predicate-test-" (symbol-name name))) ()
+       ,(format "%sWith \"%s\", call `%s' for \"%s\". Should get \"%s\""
+                "" ;; TODO implmement docstrings
+                fixture
+                (symbol-name predicate)
+                input
+                expectation)
+       ,@ert-args
+       (with-temp-buffer
+         (let ,bindings
+           (autopair-mode 1)
+           (insert ,fixture)
+           (let* ((size (1- (point-max)))
+                  (result (make-string size ?-)))
+             (dotimes (i size)
+               (goto-char (1+ i))
+               (let ((autopair-inserted (aref ,input i)))
+                 (when (and (not (eq autopair-inserted ?-))
+                            (funcall #',predicate)
+                            (aset result i ?y)))))
+             (should (string= result ,expectation))))))))
 
 (defmacro define-autopair-functional-test (name-or-name-and-ert-args fixture-fn input expected-text expected-point &optional bindings)
   (declare (indent defun))
@@ -68,14 +79,15 @@
                        (commandp ,input))
                   (ert-simulate-command ,input))
                  ((stringp ,input)
-                  (let ((last-command-event (aref ,input 0)))
+                  (let ((last-command-event (aref ,input 0))
+                        (this-command (key-binding ,input)))
                     (call-interactively (key-binding ,input) nil)
                     (autopair-post-command-handler))))
            (should (string= (buffer-substring-no-properties (point-min) (point-max)) ,expected-text))
            (should (eql (point) ,expected-point)))))))
 
-;; basic tests
-;;
+;;; basic tests
+;;;
 (define-autopair-simple-predicate-test balanced-situation
   " (())  " "(((((((" autopair-pair-p "yyyyyyy")
 
@@ -112,14 +124,25 @@
 (define-autopair-simple-predicate-test ignore-different-unmatching-paren-type
   "( ()]) " "-(-----" autopair-pair-p "-y-----")
 
+(define-autopair-simple-predicate-test autopair-keep-least-amount-of-mixed-unbalance
+  "( ()]  " "-(-----" autopair-pair-p "-y-----")
+
+(define-autopair-simple-predicate-test dont-autopair-to-resolve-mixed-unbalance
+  "( ()]  " "-[-----" autopair-pair-p "-------")
+
+(define-autopair-simple-predicate-test (autopair-so-as-not-to-worsed-unbalance-situation
+                                        :expected-result :failed)
+
+  "( (])  " "-[-----" autopair-pair-p "-y-----")
+
 (define-autopair-simple-predicate-test skip-over-partially-balanced
   " [([])   " "-----)---" autopair-skip-p "-----y---")
 
 (define-autopair-simple-predicate-test only-skip-over-at-least-partially-balanced-stuff
   " [([())  " "-----))--" autopair-skip-p "-----y---")
 
-;; extra pairs tests
-;;
+;;; extra pairs tests
+;;;
 (define-autopair-simple-predicate-test pair-of-backtick-and-quote
   "       " "-----`-" autopair-extra-pair-p "-----y-"
   ((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
@@ -136,8 +159,8 @@
   "  \"   \"" "-`---`-" autopair-extra-pair-p "-----y-"
   ((autopair-extra-pairs '(:string     ((?` . ?'))))))
 
-;; autowrap tests
-;;
+;;; autowrap tests
+;;;
 (define-autopair-functional-test autowrap-from-beginning
   #'(lambda ()
       (insert "hello") (set-mark (point)) (beginning-of-buffer))
@@ -157,16 +180,15 @@
           (exchange-point-and-mark))
   "(" "(hello)"  2)
 
-;; googlecode issue 49 (failing)
-(define-autopair-functional-test (autowrap-by-closing-inside-mixed-parens
-                                  :expected-result :failed)
+(define-autopair-functional-test autowrap-by-closing-inside-mixed-parens
+  ;;; googlecode issue 49
   #'(lambda ()
       (insert "[hello]")
       (set-mark 2)
       (backward-char))
   "}"
   "[{hello}]"
-  10)
+  9)
 
 (define-autopair-functional-test autowrap-by-opening-inside-mixed-parens
   #'(lambda ()
@@ -180,4 +202,3 @@
 
 (provide 'autopair-tests)
 ;;; autopair-tests.el ends here
-
