@@ -27,7 +27,76 @@
 (require 'ert)
 (require 'ert-x)
 
+;;;; Unit tests
+;;;;
+(ert-deftest fabricated-syntax-tables ()
+  "Test that we can fabricate syntax tables for just one delimiter"
+  (let ((opening-paren ?\()
+        (closing-paren ?\))
+        (opening-bracket ?\[)
+        (closing-bracket ?\]))
+    ;; First check that everything is as expected in the
+    ;; `standard-syntax-table'
+    ;;
+    (with-syntax-table (standard-syntax-table)
+      (should (equal (string-to-syntax "()")
+                     (aref (syntax-table) opening-paren)))
+      (should (equal (string-to-syntax ")(")
+                     (aref (syntax-table) closing-paren)))
+      (should (equal (string-to-syntax "(]")
+                     (aref (syntax-table) opening-bracket)))
+      (should (equal (string-to-syntax ")[")
+                     (aref (syntax-table) closing-bracket))))
+    ;; Now use `autopair-just-for-delim-syntax-table', testing that we
+    ;; get rid of the "()" pair, but keep the "[]" pair and the quote delims
+    ;;
+    (with-syntax-table (autopair-just-for-delim-syntax-table opening-bracket)
+      ;; Test that we got rid of the "()" pair...
+      ;;
+      (should (equal (string-to-syntax "w")
+                          (aref (syntax-table) opening-paren)))
+      (should (equal (string-to-syntax "w")
+                     (aref (syntax-table) closing-paren)))
+      (should (equal (string-to-syntax "(]")
+                     (aref (syntax-table) opening-bracket)))
+      (should (equal (string-to-syntax ")[")
+                     (aref (syntax-table) closing-bracket)))
+      (should (equal (string-to-syntax "\"")
+                     (aref (syntax-table) ?\"))))
+    (with-syntax-table (autopair-just-for-delim-syntax-table closing-bracket)
+      (should (equal (string-to-syntax "w")
+                     (aref (syntax-table) opening-paren)))
+      (should (equal (string-to-syntax "w")
+                     (aref (syntax-table) closing-paren)))
+      (should (equal (string-to-syntax "(]")
+                     (aref (syntax-table) opening-bracket)))
+      (should (equal (string-to-syntax ")[")
+                     (aref (syntax-table) closing-bracket)))
+      (should (equal (string-to-syntax "\"")
+                     (aref (syntax-table) ?\"))))))
 
+(defun autopair-mock-syntax-ppss
+  (toinsert table &optional wherepoint)
+  (with-temp-buffer
+    (with-syntax-table table
+      (insert toinsert)
+      (backward-char (or wherepoint (/ (buffer-size) 2)))
+      (syntax-ppss))))
+
+(ert-deftest test-syntax-ppss-with-fabricated-syntax ()
+  (should (eq 4
+              (car (autopair-mock-syntax-ppss "((([])))" (standard-syntax-table)))))
+  (should (eq 1
+              (car (autopair-mock-syntax-ppss "((([])))" (autopair-just-for-delim-syntax-table ?\[)))))
+  (should (eq 3
+              (car (autopair-mock-syntax-ppss "((([])))" (autopair-just-for-delim-syntax-table ?\()))))
+  (should (equal (autopair-mock-syntax-ppss "\"((()))\"" (standard-syntax-table))
+                 (autopair-mock-syntax-ppss "\"((()))\"" (autopair-just-for-delim-syntax-table ?\()))))
+
+
+
+;;;; Functional tests
+;;;;
 (defmacro define-autopair-simple-predicate-test (name fixture input predicate expectation &optional bindings)
   (declare (indent defun))
   `(ert-deftest ,(intern (concat "autopair-simple-predicate-test-" (symbol-name name))) ()
@@ -74,8 +143,8 @@
            (should (string= (buffer-substring-no-properties (point-min) (point-max)) ,expected-text))
            (should (eql (point) ,expected-point)))))))
 
-;; basic tests
-;;
+;;; basic tests
+;;;
 (define-autopair-simple-predicate-test balanced-situation
   " (())  " "(((((((" autopair-pair-p "yyyyyyy")
 
@@ -118,8 +187,8 @@
 (define-autopair-simple-predicate-test only-skip-over-at-least-partially-balanced-stuff
   " [([())  " "-----))--" autopair-skip-p "-----y---")
 
-;; extra pairs tests
-;;
+;;; extra pairs tests
+;;;
 (define-autopair-simple-predicate-test pair-of-backtick-and-quote
   "       " "-----`-" autopair-extra-pair-p "-----y-"
   ((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
@@ -136,8 +205,8 @@
   "  \"   \"" "-`---`-" autopair-extra-pair-p "-----y-"
   ((autopair-extra-pairs '(:string     ((?` . ?'))))))
 
-;; autowrap tests
-;;
+;;; autowrap tests
+;;;
 (define-autopair-functional-test autowrap-from-beginning
   #'(lambda ()
       (insert "hello") (set-mark (point)) (beginning-of-buffer))
@@ -157,7 +226,8 @@
           (exchange-point-and-mark))
   "(" "(hello)"  2)
 
-;; googlecode issue 49 (failing)
+;;; googlecode issue 49 (failing)
+;;;
 (define-autopair-functional-test (autowrap-by-closing-inside-mixed-parens
                                   :expected-result :failed)
   #'(lambda ()
@@ -180,4 +250,3 @@
 
 (provide 'autopair-tests)
 ;;; autopair-tests.el ends here
-

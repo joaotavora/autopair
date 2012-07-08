@@ -446,6 +446,31 @@ syntax table and the local value of `autopair-extra-pairs'."
 
 ;; helper functions
 ;;
+(defvar autopair-empty-syntax-table
+  (let ((empty (make-syntax-table)))
+    (dotimes (char 256)
+      (let ((syntax-entry (aref empty char)))
+        (when (and (consp syntax-entry)
+                   (or (eq (car (string-to-syntax "("))
+                           (car syntax-entry))
+                       (eq (car (string-to-syntax ")"))
+                           (car syntax-entry))))
+          (modify-syntax-entry char "w" empty))))
+    empty)
+  "A syntax table with syntax \"w\" for every char")
+
+(defun autopair-just-for-delim-syntax-table (delim)
+  (let* ((syntax-entry (aref (syntax-table) delim))
+         (other-syntax-entry (and syntax-entry
+                                  (cdr syntax-entry)
+                                  (aref (syntax-table) (cdr syntax-entry)))))
+    (when (consp other-syntax-entry)
+      (let ((retval (make-syntax-table autopair-empty-syntax-table)))
+        (aset retval delim syntax-entry)
+        (aset retval (cdr syntax-entry) other-syntax-entry)
+        retval))))
+
+
 (defun autopair-syntax-ppss ()
   "Calculate syntax info relevant to autopair.
 
