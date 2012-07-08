@@ -935,20 +935,25 @@ by this command. Then place point after the first, indented.\n\n"
   "Default handler for the wrapping action in `autopair-wrap'"
   (condition-case err
       (when (eq 'wrap action)
-        (let ((delete-active-region nil))
+        (let ((delete-active-region nil)
+              (this-autopair-command (and (symbolp this-command)
+                                          this-command)))
           (cond
-           ((eq 'opening (first autopair-action))
+           ((member this-autopair-command '(autopair-insert-opening
+                                            autopair-extra-insert-opening))
             (goto-char (1+ (cdr region-before)))
             (insert pair)
             (autopair-blink)
             (goto-char (1+ (car region-before))))
            (;; wraps
-            (eq 'closing (first autopair-action))
+            (member this-autopair-command '(autopair-skip-close-maybe
+                                            autopair-extra-skip-close-maybe))
             (delete-backward-char 1)
             (insert pair)
             (goto-char (1+ (cdr region-before)))
             (insert autopair-inserted))
-           ((eq 'insert-quote (first autopair-action))
+           ((member this-autopair-command '(autopair-insert-or-skip-quote
+                                            autopair-insert-or-skip-paired-delimiter))
             (goto-char (1+ (cdr region-before)))
             (insert pair)
             (autopair-blink))
