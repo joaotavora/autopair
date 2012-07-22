@@ -412,7 +412,8 @@ syntax table and the local value of `autopair-extra-pairs'."
           (cond ((eq class (car (string-to-syntax "(")))
                  ;; syntax classes "opening parens" and "close parens"
                  (define-key map (string char) 'autopair-insert-opening)
-                 (define-key map (string pair) 'autopair-skip-close-maybe))
+                 (when pair
+                   (define-key map (string pair) 'autopair-skip-close-maybe)))
                 ((eq class (car (string-to-syntax "\"")))
                  ;; syntax class "string quote
                  (define-key map (string char) 'autopair-insert-or-skip-quote))
