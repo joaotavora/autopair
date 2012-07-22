@@ -409,7 +409,8 @@ syntax table and the local value of `autopair-extra-pairs'."
                            (syntax-class syntax-entry)))
                (pair (and syntax-entry
                           (cdr syntax-entry))))
-          (cond ((eq class (car (string-to-syntax "(")))
+          (cond ((and (eq class (car (string-to-syntax "(")))
+                      pair)
                  ;; syntax classes "opening parens" and "close parens"
                  (define-key map (string char) 'autopair-insert-opening)
                  (define-key map (string pair) 'autopair-skip-close-maybe))
