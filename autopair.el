@@ -669,9 +669,10 @@ returned) and uplisting stops there."
              (condition-case err
                  (progn (save-excursion (up-list)) nil)
                (error
-                (autopair-in-unterminated-string-p (save-excursion
-                                                     (goto-char (fourth err))
-                                                     (autopair-syntax-ppss)))))
+                (and (fourth err) ;; fix #3
+                     (autopair-in-unterminated-string-p (save-excursion
+                                                          (goto-char (fourth err))
+                                                          (autopair-syntax-ppss))))))
              (autopair-in-unterminated-string-p (save-excursion
                                                   (goto-char (point-max))
                                                   (autopair-syntax-ppss)))
