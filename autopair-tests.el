@@ -127,12 +127,13 @@
 (define-autopair-simple-predicate-test autopair-keep-least-amount-of-mixed-unbalance
   "( ()]  " "-(-----" autopair-pair-p "-y-----")
 
-(define-autopair-simple-predicate-test dont-autopair-to-resolve-mixed-unbalance
+;; this test *passes* in the overriding-syntax-tables branch
+(define-autopair-simple-predicate-test (dont-autopair-to-resolve-mixed-unbalance
+                                        :expected-result :failed)
   "( ()]  " "-[-----" autopair-pair-p "-------")
 
-(define-autopair-simple-predicate-test (autopair-so-as-not-to-worsed-unbalance-situation
-                                        :expected-result :failed)
-
+;; this, in turn, *fails* in the overriding-syntax-tables branch
+(define-autopair-simple-predicate-test autopair-so-as-not-to-worsed-unbalance-situation
   "( (])  " "-[-----" autopair-pair-p "-y-----")
 
 (define-autopair-simple-predicate-test skip-over-partially-balanced
