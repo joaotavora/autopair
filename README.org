@@ -94,7 +94,7 @@ should work even with extensions that redefine such keys.
 #+BEGIN_EXAMPLE
 (add-hook 'c++-mode-hook
           #'(lambda ()
-               (push ?
+               (push ?{
                      (getf autopair-dont-pair :comment))))
 #+END_EXAMPLE
 
