@@ -200,7 +200,7 @@ criterious when skipping.")
 The alist contains single (t MAP) association, where MAP is a
 dynamic keymap set mostly from the major mode's syntax table.")
 
-(unless (> emacs-major-version 23)
+(unless (eval-when-compile (> emacs-major-version 23))
   (defvar autopair-dont-activate nil
     "Control activation of `autopair-global-mode'.
 
@@ -334,7 +334,7 @@ For now, simply returns `last-command-event'"
 ;;;###autoload
 (define-globalized-minor-mode autopair-global-mode autopair-mode autopair-on)
 
-(when (>= emacs-major-version 24)
+(when (eval-when-compile (>= emacs-major-version 24))
   (defvar autopair-global-mode-emacs24-hack-flag nil)
   (defadvice autopair-global-mode-enable-in-buffers (before autopairs-global-mode-emacs24-hack activate)
     "Monkey patch for recent emacsen 24.
@@ -365,7 +365,7 @@ We want this advice to only kick in the *second* call to
               (and (not (minibufferp))
                    (string-match "^ \\*" (buffer-name)))
               (eq major-mode 'sldb-mode)
-              (and (< emacs-major-version 24)
+              (and (eval-when-compile (< emacs-major-version 24))
                    (boundp 'autopair-dont-activate)
                    autopair-dont-activate)
     (autopair-mode 1))))
@@ -838,7 +838,7 @@ by this command. Then place point after the first, indented.\n\n"
                ((eq autopair-pair-criteria 'always)
                 t)
                (t
-                (not (autopair-escaped-p)))))))
+                (not (autopair-escaped-p syntax-info)))))))
 
 ;; post-command-hook stuff
 ;;
@@ -1132,5 +1132,11 @@ by this command. Then place point after the first, indented.\n\n"
                     (unintern sym))))))
 
 (provide 'autopair)
+
+
+;; Local Variables:
+;; coding: utf-8
+;; byte-compile-warnings: (not cl-functions)
+;; End:
+
 ;;; autopair.el ends here
-;;
