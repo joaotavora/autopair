@@ -332,6 +332,26 @@ For now, simply returns `last-command-event'"
 ;; minor mode and global mode
 ;;
 ;;;###autoload
+(define-minor-mode autopair-mode
+  "Automagically pair braces and quotes like in TextMate."
+  nil " pair" nil
+  (cond (autopair-mode
+         ;; Setup the dynamic emulation keymap, i.e. sets `autopair-emulation-alist'
+         ;;
+         (autopair-set-emulation-bindings)
+         (add-to-list 'emulation-mode-map-alists 'autopair-emulation-alist 'append)
+         ;; Init important vars
+         ;;
+         (setq autopair-action nil)
+         (setq autopair-wrap-action nil)
+         ;; Add the post command handler
+         ;;
+         (add-hook 'post-command-hook 'autopair-post-command-handler nil 'local))
+        (t
+         (set (make-local-variable 'autopair-emulation-alist) nil)
+         (remove-hook 'post-command-hook         'autopair-post-command-handler 'local))))
+
+;;;###autoload
 (define-globalized-minor-mode autopair-global-mode autopair-mode autopair-on)
 
 (when (eval-when-compile (>= emacs-major-version 24))
@@ -369,26 +389,6 @@ We want this advice to only kick in the *second* call to
                    (boundp 'autopair-dont-activate)
                    autopair-dont-activate)
     (autopair-mode 1))))
-
-;;;###autoload
-(define-minor-mode autopair-mode
-  "Automagically pair braces and quotes like in TextMate."
-  nil " pair" nil
-  (cond (autopair-mode
-         ;; Setup the dynamic emulation keymap, i.e. sets `autopair-emulation-alist'
-         ;;
-         (autopair-set-emulation-bindings)
-         (add-to-list 'emulation-mode-map-alists 'autopair-emulation-alist 'append)
-         ;; Init important vars
-         ;;
-         (setq autopair-action nil)
-         (setq autopair-wrap-action nil)
-         ;; Add the post command handler
-         ;;
-         (add-hook 'post-command-hook 'autopair-post-command-handler nil 'local))
-        (t
-         (set (make-local-variable 'autopair-emulation-alist) nil)
-         (remove-hook 'post-command-hook         'autopair-post-command-handler 'local))))
 
 (defun autopair-set-emulation-bindings ()
   "Setup keymap MAP with keybindings based on the major-mode's
