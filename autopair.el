@@ -795,7 +795,7 @@ by this command. Then place point after the first, indented.\n\n"
                                  (forward-sexp))
                                t)
                            (error
-                            ;; if `forward-sexp' (called byp
+                            ;; if `forward-sexp' (called by
                             ;; `autopair-forward') returned an error.
                             ;; typically we don't want to autopair,
                             ;; unless one of the following occurs:
