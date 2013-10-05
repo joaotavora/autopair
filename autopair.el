@@ -181,18 +181,19 @@
 ;; requires
 (require 'cl)
 
+(defgroup 'autopair nil
+  "Automatically pair parentheses, braces, and quotes. (TODO IMPROVE?)"
+  :group 'convenience)
+
 ;; variables
-(defvar autopair-pair-criteria 'help-balance
+(defcustom autopair-pair-criteria 'help-balance
   "How to decide whether to pair opening brackets or quotes.
 
 Set this to 'always to always pair, or 'help-balance to be more
-criterious when pairing.")
-
-(defvar autopair-skip-criteria 'help-balance
-  "How to decide whether to skip closing brackets or quotes.
-
-Set this to 'always to always skip, or 'help-balance to be more
-criterious when skipping.")
+criterious when pairing."
+  :group 'autopair
+  :type '(choice (const :tag "Help balance" help-balance)
+                 (const :tag "Always pair" always)))
 
 (defvar autopair-emulation-alist nil
   "A keymap alist for adding to `emulation-mode-map-alists'.
@@ -547,25 +548,35 @@ A list of four elements is returned:
           (blink-matching-paren (not autopair-action)))
       (call-interactively beyond-autopair))))
 
-(defvar autopair-autowrap 'help-balance
+(defcustom autopair-autowrap 'help-balance
   "If non-nil autopair attempts to wrap the selected region.
 
 This is also done in an optimistic \"try-to-balance\" fashion.
-Set this to to 'help-balance to be more criterious when wrapping.")
+Set this to to 'help-balance to be more criterious when wrapping."
+  :group 'autopair
+  :type '(choice (const :tag "Do wrap" t)
+                 (const :tag "Do not wrap" nil)
+                 (const :tag "Help Balance" 'help-balance)))
 
-(defvar autopair-skip-whitespace nil
+(defcustom autopair-skip-whitespace nil
   "If non-nil also skip over whitespace when skipping closing delimiters.
 
 If set to 'chomp, this will be most useful in lisp-like languages where you want
-lots of )))))....")
+lots of )))))...."
+  :group 'autopair
+  :type 'boolean)
 
-(defvar autopair-blink (if (boundp 'blink-matching-paren)
-                           blink-matching-paren
-                         t)
-  "If non-nil autopair blinks matching delimiters.")
+(defcustom autopair-blink (if (boundp 'blink-matching-paren)
+                              blink-matching-paren
+                            t)
+  "If non-nil autopair blinks matching delimiters."
+  :group 'autopair
+  :type 'boolean)
 
-(defvar autopair-blink-delay 0.1
-  "Autopair's blink-the-delimiter delay.")
+(defcustom autopair-blink-delay 0.1
+  "Autopair's blink-the-delimiter delay."
+  :group 'autopair
+  :type 'float)
 
 (defun autopair-document-bindings (&optional fallback-keys)
   (concat
