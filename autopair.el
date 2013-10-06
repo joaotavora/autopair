@@ -181,8 +181,8 @@
 ;; requires
 (require 'cl)
 
-(defgroup 'autopair nil
-  "Automatically pair parentheses, braces, and quotes. (TODO IMPROVE?)"
+(defgroup autopair nil
+  "Automagically pair braces and quotes"
   :group 'convenience)
 
 ;; variables
@@ -552,7 +552,8 @@ A list of four elements is returned:
   "If non-nil autopair attempts to wrap the selected region.
 
 This is also done in an optimistic \"try-to-balance\" fashion.
-Set this to to 'help-balance to be more criterious when wrapping."
+Set this to to 'help-balance to be more criterious when
+wrapping."
   :group 'autopair
   :type '(choice (const :tag "Do wrap" t)
                  (const :tag "Do not wrap" nil)
@@ -561,8 +562,8 @@ Set this to to 'help-balance to be more criterious when wrapping."
 (defcustom autopair-skip-whitespace nil
   "If non-nil also skip over whitespace when skipping closing delimiters.
 
-If set to 'chomp, this will be most useful in lisp-like languages where you want
-lots of )))))...."
+If set to 'chomp, this will be most useful in lisp-like languages
+where you want lots of )))))...."
   :group 'autopair
   :type 'boolean)
 
