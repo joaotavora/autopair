@@ -195,6 +195,15 @@ criterious when pairing."
   :type '(choice (const :tag "Help balance" help-balance)
                  (const :tag "Always pair" always)))
 
+(defcustom autopair-skip-criteria 'help-balance
+  "How to decide whether to skip closing brackets or quotes.
+
+Set this to 'always to always skip, or 'help-balance to be more
+criterious when skipping."
+  :group 'autopair
+  :type '(choice (const :tag "Help balance" help-balance)
+                 (const :tag "Always skip" always)))
+
 (defvar autopair-emulation-alist nil
   "A keymap alist for adding to `emulation-mode-map-alists'.
 
