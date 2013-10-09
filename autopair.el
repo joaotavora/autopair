@@ -484,7 +484,7 @@ A list of four elements is returned:
                  (cons string-or-comment-start
                        (condition-case nil
                            (scan-sexps string-or-comment-start 1)
-                         (error nil)))))
+                         (scan-error nil)))))
           ((nth 4 quick-syntax-info)
            (list (parse-partial-sexp (1+ (nth 8 quick-syntax-info)) (point))
                  :comment
@@ -630,18 +630,18 @@ returned) and uplisting stops there."
         (while (and (> howmany 0)
                     (condition-case err
                         (progn
-                          (scan-sexps (point) (- (point-max)))
-                          (error err))
-                      (error (let ((opening (and closing
-                                                 (autopair-find-pair closing))))
-                               (setq retval (cons (fourth err)
-                                                  (point)))
-                               (or (not opening)
-                                   (eq opening (char-after (fourth err))))))))
+                          (scan-sexps (point) (- (point-max))))
+                      (scan-error
+                       (let ((opening (and closing
+                                           (autopair-find-pair closing))))
+                         (setq retval (cons (fourth err)
+                                            (point)))
+                         (or (not opening)
+                             (eq opening (char-after (fourth err))))))))
           (goto-char (scan-lists (point) 1 1))
           (decf howmany))
         retval)
-    (error nil)))
+    (scan-error nil)))
 
 ;; interactive commands and their associated predicates
 ;;
@@ -676,7 +676,7 @@ returned) and uplisting stops there."
                  (and (eq where-sym :comment)
                       (condition-case nil
                           (eq autopair-inserted (char-after (scan-sexps (1+ (point)) -1)))
-                        (error nil)))))
+                        (scan-error nil)))))
            (setq autopair-action (list 'skip-quote autopair-inserted (point))))
           (;; decides whether to pair, i.e do *not* pair the quote if...
            ;;
@@ -691,7 +691,7 @@ returned) and uplisting stops there."
              ;; inside an unterminated string started by this char
              (condition-case err
                  (progn (save-excursion (up-list)) nil)
-               (error
+               (scan-error
                 (and (fourth err) ;; fix #3
                      (autopair-in-unterminated-string-p (save-excursion
                                                           (goto-char (fourth err))
@@ -715,7 +715,7 @@ returned) and uplisting stops there."
 
 (defun autopair-in-unterminated-string-p (autopair-triplet)
   (and (eq autopair-inserted (fourth (third autopair-triplet)))
-       (condition-case nil (progn (scan-sexps (ninth (third autopair-triplet)) 1) nil) (error t))))
+       (condition-case nil (progn (scan-sexps (ninth (third autopair-triplet)) 1) nil) (scan-error t))))
 
 
 (defun autopair-insert-opening ()
@@ -791,7 +791,7 @@ by this command. Then place point after the first, indented.\n\n"
                  (progn
                    (backward-list)
                    t)
-               (error nil))))
+               (scan-error nil))))
           (t
            t))))
 
@@ -815,7 +815,7 @@ by this command. Then place point after the first, indented.\n\n"
                                  (setq prev-point (point))
                                  (forward-sexp))
                                t)
-                           (error
+                           (scan-error
                             ;; if `forward-sexp' (called byp
                             ;; `autopair-forward') returned an error.
                             ;; typically we don't want to autopair,
@@ -842,7 +842,7 @@ by this command. Then place point after the first, indented.\n\n"
                                            (eq (char-after (scan-lists (point) -1 0))
                                                autopair-inserted)
                                          (goto-char (scan-lists (point) -1 -1)))
-                                     (error t))
+                                     (scan-error t))
 
                                    (or
                                     ;; mixed () ] for input (, yes autopair
@@ -853,9 +853,15 @@ by this command. Then place point after the first, indented.\n\n"
                                     ;; hence no autopair
                                     ))
                                   (t
-                                   nil))
-                            ;; (eq (fourth err) (point-max))
-                            ))))))
+                                   nil)))
+                           ;; some mode-specific implementations of
+                           ;; `forward-sexp' throw `args-out-of-range' instead
+                           ;; of `scan-error'. Until they are persuaded to throw
+                           ;; do so, this clause behaves as though we're in the
+                           ;; too-many-openings situation.
+                           ;;
+                           (args-out-of-range
+                            t))))))
                ((eq autopair-pair-criteria 'always)
                 t)
                (t
@@ -874,7 +880,7 @@ by this command. Then place point after the first, indented.\n\n"
             (mapc #'(lambda (fn)
                       (apply fn autopair-wrap-action))
                   autopair-handle-wrap-action-fns)
-          (error (progn
+          (scan-error (progn
                    (message "[autopair] error running custom `autopair-handle-wrap-action-fns', switching autopair off")
                    (autopair-mode -1))))
       (apply #'autopair-default-handle-wrap-action autopair-wrap-action))
@@ -887,7 +893,7 @@ by this command. Then place point after the first, indented.\n\n"
             (mapc #'(lambda (fn)
                       (funcall fn (first autopair-action) (second autopair-action) (third autopair-action)))
                   autopair-handle-action-fns)
-          (error (progn
+          (scan-error (progn
                    (message "[autopair] error running custom `autopair-handle-action-fns', switching autopair off")
                    (autopair-mode -1))))
       (apply #'autopair-default-handle-action autopair-action))
@@ -1087,7 +1093,7 @@ by this command. Then place point after the first, indented.\n\n"
          (save-excursion
            (condition-case err
                (backward-sexp (point-max))
-             (error
+             (scan-error
               (goto-char (third err))))
            (search-forward (make-string 1 (autopair-find-pair autopair-inserted))
                            orig-point
