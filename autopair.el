@@ -825,7 +825,7 @@ by this command. Then place point after the first, indented.\n\n"
                                    ;;    expression ends prematurely", which means
                                    ;;    we're in the "too-many-openings" situation
                                    ;;    and thus want to autopair.
-                                   (not (string-match "prematurely" (second err)))
+				   (not (and (stringp (second err)) (string-match "prematurely" (second err))))
                                    t)
                                   (;; 2. We stopped at a closing parenthesis. Do
                                    ;; autopair if we're in a mixed parens situation,
