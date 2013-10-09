@@ -815,8 +815,9 @@ by this command. Then place point after the first, indented.\n\n"
                                  (setq prev-point (point))
                                  (forward-sexp))
                                t)
+                           (args-out-of-range t)
                            (error
-                            ;; if `forward-sexp' (called byp
+                            ;; if `forward-sexp' (called by
                             ;; `autopair-forward') returned an error.
                             ;; typically we don't want to autopair,
                             ;; unless one of the following occurs:
