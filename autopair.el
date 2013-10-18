@@ -333,6 +333,11 @@ the list, or call it in your handlers.")
 
 This is calculated with `autopair-calculate-inserted', which see.")
 
+(defvar autopair-char-limit 10000
+  "The maximum number of characters autopair will look ahead when searching for
+a pair. Set this to something reasonable to avoid looking ahead 500000 characters
+in a large file, which freezes a core2 quad for about 10 seconds.")
+
 (defun autopair-calculate-inserted ()
   "Attempts to guess the delimiter the current command is inserting.
 
@@ -799,7 +804,8 @@ by this command. Then place point after the first, indented.\n\n"
   (let* ((syntax-triplet (autopair-syntax-ppss))
          (syntax-info (first syntax-triplet))
          (where-sym (second syntax-triplet))
-         (orig-point (point)))
+         (orig-point (point))
+         (point-limit (min (point-max) (+ autopair-char-limit orig-point))))
     (and (not (some #'(lambda (sym)
                         (autopair-exception-p where-sym sym autopair-dont-pair))
                     '(:string :comment :code :everywhere)))
@@ -811,7 +817,8 @@ by this command. Then place point after the first, indented.\n\n"
                              (expected-closing (autopair-find-pair autopair-inserted)))
                          (condition-case err
                              (progn
-                               (while (not (eq prev-point (point)))
+                               (while (and (not (eq prev-point (point)))
+                                           (< (point) point-limit))
                                  (setq prev-point (point))
                                  (forward-sexp))
                                t)
