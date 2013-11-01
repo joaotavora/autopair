@@ -7,8 +7,7 @@
 ;; X-URL: http://autopair.googlecode.com
 ;; URL: http://autopair.googlecode.com
 ;; EmacsWiki: AutoPairs
-;; Version: 0.4
-;; Revision: $Rev$ ($LastChangedDate$)
+;; Version: 0.5
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -403,15 +402,11 @@ We want this advice to only kick in the *second* call to
 (defun autopair-set-emulation-bindings ()
   "Setup keymap MAP with keybindings based on the major-mode's
 syntax table and the local value of `autopair-extra-pairs'."
-
   (let ((map (make-sparse-keymap)))
     (define-key map [remap delete-backward-char] 'autopair-backspace)
     (define-key map [remap backward-delete-char-untabify] 'autopair-backspace)
-    (define-key map (kbd "<backspace>") 'autopair-backspace)
-    (define-key map [backspace] 'autopair-backspace)
-    (define-key map (kbd "DEL") 'autopair-backspace)
-    (define-key map [return] 'autopair-newline)
-    (define-key map (kbd "RET") 'autopair-newline)
+    (define-key map "\177" 'autopair-backspace)
+    (define-key map "\r" 'autopair-newline)
     (dotimes (char 256) ;; only searches the first 256 chars,
       ;; TODO: is this enough/toomuch/stupid?
       (unless (member char
