@@ -39,27 +39,28 @@
     (when (listp name)
       (setq ert-args (rest name))
       (setq name (first name)))
-    `(ert-deftest ,(intern (concat "autopair-simple-predicate-test-" (symbol-name name))) ()
-       ,(format "%sWith \"%s\", call `%s' for \"%s\". Should get \"%s\""
-                "" ;; TODO implmement docstrings
-                fixture
-                (symbol-name predicate)
-                input
-                expectation)
-       ,@ert-args
-       (with-temp-buffer
-         (let ,bindings
-           (autopair-mode 1)
-           (insert ,fixture)
-           (let* ((size (1- (point-max)))
-                  (result (make-string size ?-)))
-             (dotimes (i size)
-               (goto-char (1+ i))
-               (let ((autopair-inserted (aref ,input i)))
-                 (when (and (not (eq autopair-inserted ?-))
-                            (funcall #',predicate)
-                            (aset result i ?y)))))
-             (should (string= result ,expectation))))))))
+    `(progn
+       ,@(loop for major-mode in '(ruby-mode c-mode emacs-lisp-mode)
+               collect `(ert-deftest ,(intern (format "autopair-in-%s-%s" major-mode (symbol-name name))) ()
+                          ,(format "With \"%s\", call `%s' for \"%s\". Should get \"%s\""
+                                   fixture
+                                   (symbol-name predicate)
+                                   input
+                                   expectation)
+                          ,@ert-args
+                          (with-temp-buffer
+                            (let ,bindings
+                              (autopair-mode 1)
+                              (insert ,fixture)
+                              (let* ((size (1- (point-max)))
+                                     (result (make-string size ?-)))
+                                (dotimes (i size)
+                                  (goto-char (1+ i))
+                                  (let ((autopair-inserted (aref ,input i)))
+                                    (when (and (not (eq autopair-inserted ?-))
+                                               (funcall #',predicate)
+                                               (aset result i ?y)))))
+                                (should (string= result ,expectation))))))))))
 
 (defmacro define-autopair-functional-test (name-or-name-and-ert-args fixture-fn input expected-text expected-point &optional bindings)
   (declare (indent defun))
@@ -73,8 +74,8 @@
        ,@ert-args
        (with-temp-buffer
          (let ,bindings
-           (autopair-mode 1)
            (funcall ,fixture-fn)
+           (autopair-mode 1)
            (cond ((and (symbolp ,input)
                        (commandp ,input))
                   (ert-simulate-command ,input))
@@ -113,7 +114,7 @@
   "  ()]  " "-(-----" autopair-pair-p "-y-----")
 
 (define-autopair-simple-predicate-test mixed-paren-2
-  "  (])  " "-(-----" autopair-pair-p "-y-----")
+  "  (])  " "-(-----" autopair-pair-p "-------")
 
 (define-autopair-simple-predicate-test find-matching-different-paren-type
   "  ()]  " "-[-----" autopair-pair-p "-------")
@@ -127,13 +128,10 @@
 (define-autopair-simple-predicate-test autopair-keep-least-amount-of-mixed-unbalance
   "( ()]  " "-(-----" autopair-pair-p "-y-----")
 
-;; this test *passes* in the overriding-syntax-tables branch
-(define-autopair-simple-predicate-test (dont-autopair-to-resolve-mixed-unbalance
-                                        :expected-result :failed)
+(define-autopair-simple-predicate-test (dont-autopair-to-resolve-mixed-unbalance)
   "( ()]  " "-[-----" autopair-pair-p "-------")
 
-;; this, in turn, *fails* in the overriding-syntax-tables branch
-(define-autopair-simple-predicate-test autopair-so-as-not-to-worsed-unbalance-situation
+(define-autopair-simple-predicate-test autopair-so-as-not-to-worsen-unbalance-situation
   "( (])  " "-[-----" autopair-pair-p "-y-----")
 
 (define-autopair-simple-predicate-test skip-over-partially-balanced
@@ -164,20 +162,20 @@
 ;;;
 (define-autopair-functional-test autowrap-from-beginning
   #'(lambda ()
-      (insert "hello") (set-mark (point)) (beginning-of-buffer))
+      (insert "hello") (set-mark (point)) (goto-char (point-min)))
   "(" "(hello)"  2)
 (define-autopair-functional-test autowrap-to-end
   #'(lambda ()
-          (insert "hello") (set-mark (point)) (beginning-of-buffer))
+          (insert "hello") (set-mark (point)) (goto-char (point-min)))
   ")" "(hello)"  8)
 (define-autopair-functional-test autowrap-from-end-stay-at-end
   #'(lambda ()
-          (insert "hello") (set-mark (point)) (beginning-of-buffer)
+          (insert "hello") (set-mark (point)) (goto-char (point-min))
           (exchange-point-and-mark))
   ")" "(hello)"  8)
 (define-autopair-functional-test autowrap-from-end-go-to-beginning
   #'(lambda ()
-          (insert "hello") (set-mark (point)) (beginning-of-buffer)
+          (insert "hello") (set-mark (point)) (goto-char (point-min))
           (exchange-point-and-mark))
   "(" "(hello)"  2)
 
@@ -199,6 +197,20 @@
   "{"
   "[{hello}]"
   3)
+
+;;; more functional tests
+;;;
+(define-autopair-functional-test issue-34-ruby-and-its-smie-pairings
+  #'(lambda ()
+      (ruby-mode)
+      (insert "foo do\n  @foo = {}\n  @bar.tee\nend")
+      (goto-char (point-min))
+      (search-forward "tee"))
+  "("
+  "foo do\n  @foo = {}\n  @bar.tee()\nend"
+  (- (point-max) 5))
+
+
 
 
 (provide 'autopair-tests)

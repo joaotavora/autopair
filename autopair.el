@@ -7,7 +7,7 @@
 ;; X-URL: http://autopair.googlecode.com
 ;; URL: http://autopair.googlecode.com
 ;; EmacsWiki: AutoPairs
-;; Version: 0.5
+;; Version: 0.6
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -178,7 +178,8 @@
 ;;; Code:
 
 ;; requires
-(require 'cl)
+(require 'cl-lib)
+(require 'paren)
 
 (defgroup autopair nil
   "Automagically pair braces and quotes"
@@ -606,37 +607,62 @@ original command as if autopair didn't exist"
                    (mapcar fn (getf blacklist exception-where-sym))
                  (getf blacklist exception-where-sym)))))
 
-(defun autopair-up-list (syntax-info &optional closing)
-  "Try to uplist as much as possible, moving point.
+(defun autopair-up-list (&optional n)
+  "Try to up-list forward as much as possible.
 
-Return nil if something prevented uplisting.
+With REVERSE, up-list backward.
 
-Otherwise return a cons of char positions of the starting
-delimiter and end delimiters of the last list we just came out
-of. If we aren't inside any lists return a cons of current point.
-
-If inside nested lists of mixed parethesis types, finding a
-matching parenthesis of a mixed-type is considered OK (non-nil is
-returned) and uplisting stops there."
-  (condition-case nil
-      (let ((howmany (car syntax-info))
-            (retval (cons (point)
-                          (point))))
-        (while (and (> howmany 0)
-                    (condition-case err
-                        (progn
-                          (scan-sexps (point) (- (point-max))))
-                      (scan-error
-                       (let ((opening (and closing
-                                           (autopair-find-pair closing))))
-                         (setq retval (cons (fourth err)
-                                            (point)))
-                         (or (not opening)
-                             (eq opening (char-after (fourth err))))))))
-          (goto-char (scan-lists (point) 1 1))
-          (decf howmany))
-        retval)
-    (scan-error nil)))
+TODO: describe other details"
+  (interactive)
+  (cl-flet ((pair-data
+             (matched? &rest args)
+             (cons matched? (if (plusp n) args (reverse args)))))
+    (save-excursion
+      (loop with n = (or n (point-max))
+            for i from 0 below (abs n)
+            with pairings = nil
+            do
+            (condition-case forward-err
+                (progn
+                  (forward-sexp (if (plusp n)
+                                    (point-max)
+                                  (- (point-max))))
+                  (return (cons (pair-data t) pairings)))
+              (scan-error
+               (goto-char
+                (if (plusp n)
+                    ;; HACK: the reason for this `max' is that some
+                    ;; modes like ruby-mode sometimes mis-report the
+                    ;; scan error when `forward-sexp'eeing too-much, its
+                    ;; (nth 3) should at least one greater than its (nth
+                    ;; 2). We really need to move out of the sexp so
+                    ;; detect this and add 1. If this were fixed we
+                    ;; could move to (nth 3 forward-err) in all
+                    ;; situations.
+                    ;;
+                    (max (1+ (nth 2 forward-err))
+                         (nth 3 forward-err))
+                  (nth 3 forward-err)))
+               (let* ((show-paren-data (funcall show-paren-data-function)))
+                 (cond (show-paren-data
+                        (cl-destructuring-bind (here-beg here-end there-beg there-end mismatch)
+                            show-paren-data
+                          (push (if (plusp n)
+                                    (pair-data (not mismatch) there-beg here-end)
+                                  (pair-data (not mismatch) there-end here-beg))
+                                pairings)
+                          (unless (and here-beg there-beg)
+                            (return pairings))))
+                       (t
+                        (condition-case backward-err
+                            (save-excursion
+                              (forward-sexp (if (plusp n) -1 1))
+                              (push (pair-data t (point) (nth 2 forward-err))
+                                    pairings))
+                          (scan-error
+                           (return (cons
+                                    (pair-data nil (nth 2 backward-err) nil)
+                                    pairings)))))))))))))
 
 ;; interactive commands and their associated predicates
 ;;
@@ -763,23 +789,18 @@ by this command. Then place point after the first, indented.\n\n"
          (syntax-info (first syntax-triplet))
          (orig-point (point)))
     (cond ((eq autopair-skip-criteria 'help-balance)
-           (save-excursion
-             (let ((pos-pair (autopair-up-list syntax-info autopair-inserted)))
-               ;; if `autopair-up-list' returned something valid, we
-               ;; probably want to skip but only if on of the following is true.
-               ;;
-               ;; 1. it returned a cons of equal values (we're not inside any list
-               ;;
-               ;; 2. up-listing stopped at a list that contains our original point
-               ;;
-               ;; 3. up-listing stopped at a list that does not
-               ;;    contain out original point but its starting
-               ;;    delimiter matches the one we expect.
-               (and pos-pair
-                    (or (eq (car pos-pair) (cdr pos-pair))
-                        (< orig-point (cdr pos-pair))
-                        (eq (char-after (car pos-pair))
-                            (autopair-find-pair autopair-inserted)))))))
+           (let* ((up-list-data (autopair-up-list (- (point-max))))
+                  (outer (or
+                          (cl-find-if #'(lambda (pairing)
+                                       (not (first pairing)))
+                                   (reverse up-list-data))
+                          (first up-list-data)))
+                  (innermost (car (last up-list-data))))
+             (cond ((first outer)
+                    (first innermost))
+                   ((first innermost)
+                    (not (eq (autopair-find-pair (char-after (second outer)))
+                             autopair-inserted))))))
           ((eq autopair-skip-criteria 'need-opening)
            (save-excursion
              (condition-case err
@@ -795,68 +816,23 @@ by this command. Then place point after the first, indented.\n\n"
          (syntax-info (first syntax-triplet))
          (where-sym (second syntax-triplet))
          (orig-point (point)))
-    (and (not (some #'(lambda (sym)
-                        (autopair-exception-p where-sym sym autopair-dont-pair))
-                    '(:string :comment :code :everywhere)))
+    (and (not (cl-some #'(lambda (sym)
+                           (autopair-exception-p where-sym sym autopair-dont-pair))
+                       '(:string :comment :code :everywhere)))
          (cond ((eq autopair-pair-criteria 'help-balance)
                 (and (not (autopair-escaped-p syntax-info))
-                     (save-excursion
-                       (let ((pos-pair (autopair-up-list syntax-info))
-                             (prev-point (point-max))
-                             (expected-closing (autopair-find-pair autopair-inserted)))
-                         (condition-case err
-                             (progn
-                               (while (not (eq prev-point (point)))
-                                 (setq prev-point (point))
-                                 (forward-sexp))
-                               t)
-                           (scan-error
-                            ;; if `forward-sexp' (called byp
-                            ;; `autopair-forward') returned an error.
-                            ;; typically we don't want to autopair,
-                            ;; unless one of the following occurs:
-                            ;;
-                            (cond (;; 1. The error is *not* of type "containing
-                                   ;;    expression ends prematurely", which means
-                                   ;;    we're in the "too-many-openings" situation
-                                   ;;    and thus want to autopair.
-                                   (not (string-match "prematurely" (second err)))
-                                   t)
-                                  (;; 2. We stopped at a closing parenthesis. Do
-                                   ;; autopair if we're in a mixed parens situation,
-                                   ;; i.e. the last list jumped over was started by
-                                   ;; the paren we're trying to match
-                                   ;; (`autopair-inserted') and ended by a different
-                                   ;; parens, or the closing paren we stopped at is
-                                   ;; also different from the expected. The second
-                                   ;; `scan-lists' places point at the closing of the
-                                   ;; last list we forwarded over.
-                                   ;;
-                                   (condition-case err
-                                       (prog1
-                                           (eq (char-after (scan-lists (point) -1 0))
-                                               autopair-inserted)
-                                         (goto-char (scan-lists (point) -1 -1)))
-                                     (scan-error t))
-
-                                   (or
-                                    ;; mixed () ] for input (, yes autopair
-                                    (not (eq expected-closing (char-after (third err))))
-                                    ;; mixed (] ) for input (, yes autopair
-                                    (not (eq expected-closing (char-after (point))))
-                                    ;; ()) for input (, not mixed
-                                    ;; hence no autopair
-                                    ))
-                                  (t
-                                   nil)))
-                           ;; some mode-specific implementations of
-                           ;; `forward-sexp' throw `args-out-of-range' instead
-                           ;; of `scan-error'. Until they are persuaded to throw
-                           ;; do so, this clause behaves as though we're in the
-                           ;; too-many-openings situation.
-                           ;;
-                           (args-out-of-range
-                            t))))))
+                     (let* ((up-list-data (autopair-up-list))
+                            (outer (or
+                                    (cl-find-if #'(lambda (pairing)
+                                                    (not (first pairing)))
+                                                (reverse up-list-data))
+                                    (first up-list-data)))
+                            (innermost (car (last up-list-data))))
+                       (cond ((first outer)
+                              t)
+                             ((not (first innermost))
+                              (not (eq (autopair-find-pair (char-before (third outer)))
+                                       autopair-inserted)))))))
                ((eq autopair-pair-criteria 'always)
                 t)
                (t
@@ -975,7 +951,7 @@ by this command. Then place point after the first, indented.\n\n"
            (;; wraps
             (member this-autopair-command '(autopair-skip-close-maybe
                                             autopair-extra-skip-close-maybe))
-            (delete-backward-char 1)
+            (delete-char -1)
             (insert pair)
             (goto-char (1+ (cdr region-before)))
             (insert autopair-inserted))
@@ -985,7 +961,7 @@ by this command. Then place point after the first, indented.\n\n"
             (insert pair)
             (autopair-blink))
            (t
-            (delete-backward-char 1)
+            (delete-char -1)
             (goto-char (cdr region-before))
             (insert autopair-inserted)))
           (setq autopair-action nil)))
@@ -1158,7 +1134,5 @@ by this command. Then place point after the first, indented.\n\n"
 
 ;; Local Variables:
 ;; coding: utf-8
-;; byte-compile-warnings: (not cl-functions)
 ;; End:
-
 ;;; autopair.el ends here
