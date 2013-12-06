@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2010  João Távora
 
-;; Author: João Távora(defvar autopair-extra-tests nil) <joaotavora@gmail.com>
+;; Author: João Távora <joaotavora@gmail.com>
 ;; Keywords: emulations, convenience
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -21,11 +21,19 @@
 ;;; Commentary:
 
 ;; Tests for autopair.el
+;;
+;; emacs -Q -L .                                          \
+;;           --batch                                      \
+;;           --eval '(byte-compile-file "autopair.el" t)' \
+;;          -l autopair-tests.el -e ert
+
+
 
 ;;; Code:
 (require 'autopair)
 (require 'ert)
 (require 'ert-x)
+(require 'cl-lib)
 ;;;; Unit tests
 ;;;;
 ;;; Nothing we can call unit tests in this branch...
@@ -37,38 +45,38 @@
   (let ((name name-or-name-and-ert-args)
         (ert-args '()))
     (when (listp name)
-      (setq ert-args (rest name))
-      (setq name (first name)))
+      (setq ert-args (cl-rest name))
+      (setq name (cl-first name)))
     `(progn
-       ,@(loop for major-mode in '(ruby-mode c-mode emacs-lisp-mode)
-               collect `(ert-deftest ,(intern (format "autopair-in-%s-%s" major-mode (symbol-name name))) ()
-                          ,(format "With \"%s\", call `%s' for \"%s\". Should get \"%s\""
-                                   fixture
-                                   (symbol-name predicate)
-                                   input
-                                   expectation)
-                          ,@ert-args
-                          (with-temp-buffer
-                            (let ,bindings
-                              (autopair-mode 1)
-                              (insert ,fixture)
-                              (let* ((size (1- (point-max)))
-                                     (result (make-string size ?-)))
-                                (dotimes (i size)
-                                  (goto-char (1+ i))
-                                  (let ((autopair-inserted (aref ,input i)))
-                                    (when (and (not (eq autopair-inserted ?-))
-                                               (funcall #',predicate)
-                                               (aset result i ?y)))))
-                                (should (string= result ,expectation))))))))))
+       ,@(cl-loop for major-mode in '(ruby-mode c-mode emacs-lisp-mode)
+		  collect `(ert-deftest ,(intern (format "autopair-in-%s-%s" major-mode (symbol-name name))) ()
+			     ,(format "With \"%s\", call `%s' for \"%s\". Should get \"%s\""
+				      fixture
+				      (symbol-name predicate)
+				      input
+				      expectation)
+			     ,@ert-args
+			     (with-temp-buffer
+			       (let ,bindings
+				 (autopair-mode 1)
+				 (insert ,fixture)
+				 (let* ((size (1- (point-max)))
+					(result (make-string size ?-)))
+				   (dotimes (i size)
+				     (goto-char (1+ i))
+				     (let ((autopair-inserted (aref ,input i)))
+				       (when (and (not (eq autopair-inserted ?-))
+						  (funcall #',predicate)
+						  (aset result i ?y)))))
+				   (should (string= result ,expectation))))))))))
 
 (defmacro define-autopair-functional-test (name-or-name-and-ert-args fixture-fn input expected-text expected-point &optional bindings)
   (declare (indent defun))
   (let ((name name-or-name-and-ert-args)
-         (ert-args '()))
+	(ert-args '()))
     (when (listp name)
-      (setq ert-args (rest name))
-      (setq name (first name)))
+      (setq ert-args (cl-rest name))
+      (setq name (cl-first name)))
     `(ert-deftest ,(intern (concat "autopair-functional-test-" (symbol-name name))) ()
        ,(format "%s: see test definition" name)
        ,@ert-args
@@ -166,17 +174,17 @@
   "(" "(hello)"  2)
 (define-autopair-functional-test autowrap-to-end
   #'(lambda ()
-          (insert "hello") (set-mark (point)) (goto-char (point-min)))
+      (insert "hello") (set-mark (point)) (goto-char (point-min)))
   ")" "(hello)"  8)
 (define-autopair-functional-test autowrap-from-end-stay-at-end
   #'(lambda ()
-          (insert "hello") (set-mark (point)) (goto-char (point-min))
-          (exchange-point-and-mark))
+      (insert "hello") (set-mark (point)) (goto-char (point-min))
+      (exchange-point-and-mark))
   ")" "(hello)"  8)
 (define-autopair-functional-test autowrap-from-end-go-to-beginning
   #'(lambda ()
-          (insert "hello") (set-mark (point)) (goto-char (point-min))
-          (exchange-point-and-mark))
+      (insert "hello") (set-mark (point)) (goto-char (point-min))
+      (exchange-point-and-mark))
   "(" "(hello)"  2)
 
 (define-autopair-functional-test autowrap-by-closing-inside-mixed-parens
