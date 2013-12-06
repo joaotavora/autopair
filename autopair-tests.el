@@ -91,79 +91,79 @@
                   (let ((last-command-event (aref ,input 0))
                         (this-command (key-binding ,input)))
                     (call-interactively (key-binding ,input) nil)
-                    (autopair-post-command-handler))))
+                    (autopair--post-command-handler))))
            (should (string= (buffer-substring-no-properties (point-min) (point-max)) ,expected-text))
            (should (eql (point) ,expected-point)))))))
 
 ;;; basic tests
 ;;;
 (define-autopair-simple-predicate-test balanced-situation
-  " (())  " "(((((((" autopair-pair-p "yyyyyyy")
+  " (())  " "(((((((" autopair--pair-p "yyyyyyy")
 
 (define-autopair-simple-predicate-test too-many-openings
-  " ((()) " "(((((((" autopair-pair-p "yyyyyyy")
+  " ((()) " "(((((((" autopair--pair-p "yyyyyyy")
 
 (define-autopair-simple-predicate-test too-many-closings
-  " (())) " "(((((((" autopair-pair-p "------y")
+  " (())) " "(((((((" autopair--pair-p "------y")
 
 (define-autopair-simple-predicate-test too-many-closings-2
-  "()   ) " "---(---" autopair-pair-p "-------")
+  "()   ) " "---(---" autopair--pair-p "-------")
 
 (define-autopair-simple-predicate-test balanced-autoskipping
-  " (())  " "---))--" autopair-skip-p "---yy--")
+  " (())  " "---))--" autopair--skip-p "---yy--")
 
 (define-autopair-simple-predicate-test too-many-openings-autoskipping
-  " ((()) " "----))-" autopair-skip-p "-------")
+  " ((()) " "----))-" autopair--skip-p "-------")
 
 (define-autopair-simple-predicate-test too-many-closings-autoskipping
-  " (())) " "---)))-" autopair-skip-p "---yyy-")
+  " (())) " "---)))-" autopair--skip-p "---yyy-")
 
 (define-autopair-simple-predicate-test mixed-paren-1
-  "  ()]  " "-(-----" autopair-pair-p "-y-----")
+  "  ()]  " "-(-----" autopair--pair-p "-y-----")
 
 (define-autopair-simple-predicate-test mixed-paren-2
-  "  (])  " "-(-----" autopair-pair-p "-------")
+  "  (])  " "-(-----" autopair--pair-p "-------")
 
 (define-autopair-simple-predicate-test find-matching-different-paren-type
-  "  ()]  " "-[-----" autopair-pair-p "-------")
+  "  ()]  " "-[-----" autopair--pair-p "-------")
 
 (define-autopair-simple-predicate-test find-matching-different-paren-type-inside-list
-  "( ()]) " "-[-----" autopair-pair-p "-------")
+  "( ()]) " "-[-----" autopair--pair-p "-------")
 
 (define-autopair-simple-predicate-test ignore-different-unmatching-paren-type
-  "( ()]) " "-(-----" autopair-pair-p "-y-----")
+  "( ()]) " "-(-----" autopair--pair-p "-y-----")
 
 (define-autopair-simple-predicate-test autopair-keep-least-amount-of-mixed-unbalance
-  "( ()]  " "-(-----" autopair-pair-p "-y-----")
+  "( ()]  " "-(-----" autopair--pair-p "-y-----")
 
 (define-autopair-simple-predicate-test (dont-autopair-to-resolve-mixed-unbalance)
-  "( ()]  " "-[-----" autopair-pair-p "-------")
+  "( ()]  " "-[-----" autopair--pair-p "-------")
 
 (define-autopair-simple-predicate-test autopair-so-as-not-to-worsen-unbalance-situation
-  "( (])  " "-[-----" autopair-pair-p "-y-----")
+  "( (])  " "-[-----" autopair--pair-p "-y-----")
 
 (define-autopair-simple-predicate-test skip-over-partially-balanced
-  " [([])   " "-----)---" autopair-skip-p "-----y---")
+  " [([])   " "-----)---" autopair--skip-p "-----y---")
 
 (define-autopair-simple-predicate-test only-skip-over-at-least-partially-balanced-stuff
-  " [([())  " "-----))--" autopair-skip-p "-----y---")
+  " [([())  " "-----))--" autopair--skip-p "-----y---")
 
 ;;; extra pairs tests
 ;;;
 (define-autopair-simple-predicate-test pair-of-backtick-and-quote
-  "       " "-----`-" autopair-extra-pair-p "-----y-"
+  "       " "-----`-" autopair--extra-pair-p "-----y-"
   ((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
 
 (define-autopair-simple-predicate-test pair-backtick-and-quote-but-only-inside-string
-  "\"     \"  " "-----`--`" autopair-extra-pair-p "-----y---"
+  "\"     \"  " "-----`--`" autopair--extra-pair-p "-----y---"
   ((autopair-extra-pairs '(:string     ((?` . ?'))))))
 
 (define-autopair-simple-predicate-test skip-backtick-and-quote
-  "   ` ' " "-----'-" autopair-extra-skip-p "-----y-"
+  "   ` ' " "-----'-" autopair--extra-skip-p "-----y-"
   ((autopair-extra-pairs '(:everywhere ((?` . ?'))))))
 
 (define-autopair-simple-predicate-test skip-backtick-and-quote-but-only-inside-string
-  "  \"   \"" "-`---`-" autopair-extra-pair-p "-----y-"
+  "  \"   \"" "-`---`-" autopair--extra-pair-p "-----y-"
   ((autopair-extra-pairs '(:string     ((?` . ?'))))))
 
 ;;; autowrap tests
