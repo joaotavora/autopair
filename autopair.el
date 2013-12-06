@@ -8,7 +8,7 @@
 ;; URL: http://autopair.googlecode.com
 ;; EmacsWiki: AutoPairs
 ;; Package-Requires: ((cl-lib "0.3"))
-;; Version: 0.6
+;; Version: 0.6.1
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -646,9 +646,9 @@ TODO: describe other details"
              do
              (condition-case forward-err
                  (progn
-                   (forward-sexp (if (cl-plusp n)
-                                     (point-max)
-                                   (- (point-max))))
+                   (scan-sexps (point) (if (cl-plusp n)
+                                           (point-max)
+                                         (- (point-max))))
                    (cl-return (cons (list t) pairings)))
                (scan-error
                 (goto-char
