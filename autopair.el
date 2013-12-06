@@ -502,7 +502,7 @@ A list of four elements is returned:
                  :code
                  quick-syntax-info)))))
 
-(defun autopair--find-pair (delim &optional closing)
+(defun autopair--pair-of (delim &optional closing)
   (when (and delim
              (integerp delim))
     (let ((syntax-entry (aref (syntax-table) delim)))
@@ -536,7 +536,7 @@ A list of four elements is returned:
                   (and (eq (nth 0 start-syntax) (nth 0 end-syntax))
                        (eq (nth 3 start-syntax) (nth 3 end-syntax))))
           (list 'wrap (or (cl-second autopair-action)
-                          (autopair--find-pair autopair-inserted))
+                          (autopair--pair-of autopair-inserted))
                 point-before
                 region-before))))))
 
@@ -608,48 +608,58 @@ original command as if autopair didn't exist"
                    (mapcar fn (cl-getf blacklist exception-where-sym))
                  (cl-getf blacklist exception-where-sym)))))
 
-(defun autopair--pair-data (n)
-  (let* ((show-paren-data (and (boundp 'show-paren-data-function)
+(defun autopair--find-pair (direction)
+  "Compute (MATCHED START END) for the pair of the delimiter at point.
+
+With positive DIRECTION consider the delimiter after point and
+travel forward, otherwise consider the delimiter is just before
+point and travel backward."
+  (let* ((show-paren-data (and nil
                                (funcall show-paren-data-function)))
          (here (point)))
     (cond (show-paren-data
            (cl-destructuring-bind (here-beg here-end there-beg there-end mismatch)
                show-paren-data
-             (if (cl-plusp n)
-                 (list (not mismatch) there-beg here-end)
-               (list (not mismatch) there-end here-beg))))
+             (if (cl-plusp direction)
+                 (list (not mismatch) there-end here-beg)
+               (list (not mismatch) there-beg here-end))))
           (t
            (condition-case move-err
                (save-excursion
-                 (forward-sexp (if (cl-plusp n) -1 1))
-                 (list (if (cl-plusp n)
-                           (eq (char-before here)
-                               (autopair--find-pair (char-after (point))))
-                         (eq (char-after here)
-                             (autopair--find-pair (char-before (point)))))
-
+                 (forward-sexp (if (cl-plusp direction) 1 -1))
+                 (list (if (cl-plusp direction)
+                           (eq (char-after here)
+                               (autopair--pair-of (char-before (point))))
+                         (eq (char-before here)
+                             (autopair--pair-of (char-after (point)))))
                        (point) here))
              (scan-error
               (list nil (nth 2 move-err) here)))))))
 
 (defun autopair--up-list (&optional n)
-  "Try to up-list forward as much as possible.
+  "Try to up-list forward as much as N lists.
 
-With REVERSE, up-list backward.
+With negative N, up-list backward.
 
-TODO: describe other details"
-  (interactive)
+Return a cons of two descritions (MATCHED START END) for the
+innermost and outermost lists that enclose point. The outermost
+list enclosing point is either the first top-level or mismatched
+list found by uplisting."
   (save-excursion
     (cl-loop with n = (or n (point-max))
              for i from 0 below (abs n)
-             with pairings = nil
+             with outermost
+             with innermost
+             until outermost
              do
              (condition-case forward-err
                  (progn
                    (scan-sexps (point) (if (cl-plusp n)
                                            (point-max)
                                          (- (point-max))))
-                   (cl-return (cons (list t) pairings)))
+                   (unless innermost
+                     (setq innermost (list t)))
+                   (setq outermost (list t)))
                (scan-error
                 (goto-char
                  (if (cl-plusp n)
@@ -665,10 +675,12 @@ TODO: describe other details"
                      (max (1+ (nth 2 forward-err))
                           (nth 3 forward-err))
                    (nth 3 forward-err)))
-                (let ((pair-data (autopair--pair-data n)))
-                  (push pair-data pairings)
+                (let ((pair-data (autopair--find-pair (- n))))
+                  (unless innermost
+                    (setq innermost pair-data))
                   (unless (cl-first pair-data)
-                    (cl-return pairings))))))))
+                    (setq outermost pair-data)))))
+             finally (return (cons innermost outermost)))))
 
 ;; interactive commands and their associated predicates
 ;;
@@ -749,7 +761,7 @@ TODO: describe other details"
   (interactive)
   (setq autopair-inserted (autopair--calculate-inserted))
   (when (autopair--pair-p)
-    (setq autopair-action (list 'opening (autopair--find-pair autopair-inserted) (point))))
+    (setq autopair-action (list 'opening (autopair--pair-of autopair-inserted) (point))))
   (autopair--fallback))
 (put 'autopair-insert-opening 'function-documentation
      '(concat "Insert opening delimiter and possibly automatically close it.\n\n"
@@ -759,7 +771,7 @@ TODO: describe other details"
   (interactive)
   (setq autopair-inserted (autopair--calculate-inserted))
   (when (autopair--skip-p)
-    (setq autopair-action (list 'closing (autopair--find-pair autopair-inserted) (point))))
+    (setq autopair-action (list 'closing (autopair--pair-of autopair-inserted) (point))))
   (autopair--fallback))
 (put 'autopair-skip-close-maybe 'function-documentation
      '(concat "Insert or possibly skip over a closing delimiter.\n\n"
@@ -769,7 +781,7 @@ TODO: describe other details"
   (interactive)
   (setq autopair-inserted (autopair--calculate-inserted))
   (when (char-before)
-    (setq autopair-action (list 'backspace (autopair--find-pair (char-before) 'closing) (point))))
+    (setq autopair-action (list 'backspace (autopair--pair-of (char-before) 'closing) (point))))
   (autopair--fallback (kbd "DEL")))
 (put 'autopair-backspace 'function-documentation
      '(concat "Possibly delete a pair of paired delimiters.\n\n"
@@ -778,7 +790,7 @@ TODO: describe other details"
 (defun autopair-newline ()
   (interactive)
   (setq autopair-inserted (autopair--calculate-inserted))
-  (let ((pair (autopair--find-pair (char-before))))
+  (let ((pair (autopair--pair-of (char-before))))
     (when (and pair
                (eq (char-syntax pair) ?\))
                (eq (char-after) pair))
@@ -795,17 +807,12 @@ by this command. Then place point after the first, indented.\n\n"
          (syntax-info (cl-first syntax-triplet))
          (orig-point (point)))
     (cond ((eq autopair-skip-criteria 'help-balance)
-           (let* ((up-list-data (autopair--up-list (- (point-max))))
-                  (outer (or
-                          (cl-find-if #'(lambda (pairing)
-                                          (not (cl-first pairing)))
-                                      (reverse up-list-data))
-                          (cl-first up-list-data)))
-                  (innermost (car (last up-list-data))))
-             (cond ((cl-first outer)
+           (cl-destructuring-bind (innermost . outermost)
+               (autopair--up-list (- (point-max)))
+             (cond ((cl-first outermost)
                     (cl-first innermost))
                    ((cl-first innermost)
-                    (not (eq (autopair--find-pair (char-after (cl-third outer)))
+                    (not (eq (autopair--pair-of (char-after (cl-third outermost)))
                              autopair-inserted))))))
           ((eq autopair-skip-criteria 'need-opening)
            (save-excursion
@@ -827,17 +834,12 @@ by this command. Then place point after the first, indented.\n\n"
                        '(:string :comment :code :everywhere)))
          (cond ((eq autopair-pair-criteria 'help-balance)
                 (and (not (autopair--escaped-p syntax-info))
-                     (let* ((up-list-data (autopair--up-list))
-                            (outer (or
-                                    (cl-find-if #'(lambda (pairing)
-                                                    (not (cl-first pairing)))
-                                                (reverse up-list-data))
-                                    (cl-first up-list-data)))
-                            (innermost (car (last up-list-data))))
-                       (cond ((cl-first outer)
+                     (cl-destructuring-bind (innermost . outermost)
+                         (autopair--up-list (point-max))
+                       (cond ((cl-first outermost)
                               t)
                              ((not (cl-first innermost))
-                              (not (eq (autopair--find-pair (char-before (cl-third outer)))
+                              (not (eq (autopair--pair-of (char-before (cl-third outermost)))
                                        autopair-inserted)))))))
                ((eq autopair-pair-criteria 'always)
                 t)
@@ -1029,7 +1031,7 @@ by this command. Then place point after the first, indented.\n\n"
   (interactive)
   (setq autopair-inserted (autopair--calculate-inserted))
   (when (autopair--extra-pair-p)
-    (setq autopair-action (list 'opening (autopair--find-pair autopair-inserted) (point))))
+    (setq autopair-action (list 'opening (autopair--pair-of autopair-inserted) (point))))
   (autopair--fallback))
 (put 'autopair-extra-insert-opening 'function-documentation
      '(concat "Insert (an extra) opening delimiter and possibly automatically close it.\n\n"
@@ -1067,7 +1069,7 @@ by this command. Then place point after the first, indented.\n\n"
                (backward-sexp (point-max))
              (scan-error
               (goto-char (cl-third err))))
-           (search-forward (make-string 1 (autopair--find-pair autopair-inserted))
+           (search-forward (make-string 1 (autopair--pair-of autopair-inserted))
                            orig-point
                            'noerror)))))
 
