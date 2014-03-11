@@ -724,22 +724,15 @@ list found by uplisting."
              escaped-p
              ;; ... inside a generic string
              (eq inside-string t)
-             ;; ... inside an unterminated string started by this char
+             ;; ... inside an unterminated string started by this char 
              (autopair--in-unterminated-string-p syntax-triplet)
-             ;; ... uplisting forward causes an error which leaves us
-             ;; inside an unterminated string started by this char
-             (condition-case err
-                 (progn (save-excursion (up-list)) nil)
-               (scan-error
-                (and (cl-fourth err) ;; fix #3
-                     (autopair--in-unterminated-string-p (save-excursion
-                                                           (goto-char (cl-fourth err))
-                                                           (autopair--syntax-ppss))))))
+             ;; ... the position at the end of buffer is inside an
+             ;; unterminated string
              (autopair--in-unterminated-string-p (save-excursion
                                                    (goto-char (point-max))
                                                    (autopair--syntax-ppss)))
-             ;; ... comment-disable or string-disable are true here.
-             ;; The latter is only useful if we're in a string
+             ;; ... comment-disable or string-disable are true at
+             ;; point.  The latter is only useful if we're in a string
              ;; terminated by a character other than
              ;; `autopair-inserted'.
              (cl-some #'(lambda (sym)
@@ -753,8 +746,11 @@ list found by uplisting."
               (autopair--document-bindings)))
 
 (defun autopair--in-unterminated-string-p (autopair-triplet)
-  (and (eq autopair-inserted (cl-fourth (cl-third autopair-triplet)))
-       (condition-case nil (progn (scan-sexps (cl-ninth (cl-third autopair-triplet)) 1) nil) (scan-error t))))
+  (let* ((relevant-ppss (cl-third autopair-triplet))
+         (string-delim (cl-fourth relevant-ppss)))
+    (and (or (eq t string-delim)
+             (eq autopair-inserted string-delim))
+         (condition-case nil (progn (scan-sexps (cl-ninth relevant-ppss) 1) nil) (scan-error t)))))
 
 
 (defun autopair-insert-opening ()
