@@ -608,6 +608,13 @@ original command as if autopair didn't exist"
                    (mapcar fn (cl-getf blacklist exception-where-sym))
                  (cl-getf blacklist exception-where-sym)))))
 
+(defun autopair--forward-sexp (arg)
+  (forward-sexp arg)
+  (cond ((cl-plusp arg)
+	 (skip-syntax-backward "'"))
+	(t
+	 (skip-syntax-forward "'"))))
+
 (defun autopair--find-pair (direction)
   "Compute (MATCHED START END) for the pair of the delimiter at point.
 
@@ -626,7 +633,7 @@ point and travel backward."
           (t
            (condition-case move-err
                (save-excursion
-                 (forward-sexp (if (cl-plusp direction) 1 -1))
+                 (autopair--forward-sexp (if (cl-plusp direction) 1 -1))
                  (list (if (cl-plusp direction)
                            (eq (char-after here)
                                (autopair--pair-of (char-before (point))))
@@ -680,7 +687,7 @@ list found by uplisting."
                     (setq innermost pair-data))
                   (unless (cl-first pair-data)
                     (setq outermost pair-data)))))
-             finally (return (cons innermost outermost)))))
+             finally (cl-return (cons innermost outermost)))))
 
 ;; interactive commands and their associated predicates
 ;;

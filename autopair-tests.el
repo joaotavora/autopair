@@ -218,6 +218,15 @@
   "foo do\n  @foo = {}\n  @bar.tee()\nend"
   (- (point-max) 5))
 
+(define-autopair-functional-test issue-43-confusion-in-emacs-lisp-mode
+  #'(lambda ()
+      (emacs-lisp-mode)
+      (insert "'()")
+      (goto-char (1- (point))))
+  "("
+  "'(())"
+  (- (point-max) 2))
+
 
 
 
