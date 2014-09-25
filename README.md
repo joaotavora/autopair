@@ -1,5 +1,5 @@
-*Autopair* is an extension to the Emacs text editor that automatically
- pairs braces and quotes:
+**Autopair** is an extension to the Emacs text editor that
+ automatically pairs braces and quotes:
 
   - Opening braces/quotes are autopaired;
   - Closing braces/quotes are autoskipped;
@@ -36,17 +36,25 @@ prefer it to the following:
 
 ## Differences to smartparens
 
-Note in particular that [smartparens][smartparens] claims in it's README that it
-provides "all the basic funcionality of autopair". 
+Note in particular that [smartparens][smartparens] claims in it's
+README that it provides "all the basic funcionality of autopair". *I
+don't know why*:
 
-1. it does *not* setup for any mode according to the mode's syntax table.
+1. it does *not* setup for any mode according to the mode's syntax
+   table.
 2. it does *not* attempt to automatically-balance parentheses
+
+Autopair provides these things out-of-the-box. Smartparens provides
+other features, that I personally use [Yasnippet][yasnippet] to
+achieve.
 
 ## Upcoming `electric-pair-mode` in Emacs 24.4
 
-In the upcaoming Emacs 24.4 version, the `electric-pair-mode`
-major-mode has been much improved and supersedes autopair in
-functionality and general all-around Emacs integration.
+`electric-pair-mode` is a minor mode in Emacs 24.3, but it's not very
+useful or widely used. In upcoming Emacs 24.4, `electric-pair-mode`
+minor-mode has been rewritten and much improved. It **supersedes
+autopair** in functionality and general all-around Emacs integration,
+and I recommend you use it instead.
 
 # Neat tricks
 
