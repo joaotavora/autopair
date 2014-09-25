@@ -36,9 +36,9 @@ prefer it to the following:
 
 ## Differences to smartparens
 
-Note in particular that [smartparens][smartparens] claims in it's
+Note in particular that [smartparens][smartparens] claims in its
 README that it provides "all the basic funcionality of autopair". *I
-don't know why*:
+don't know why* this claim is made, since at time of writing:
 
 1. it does *not* setup for any mode according to the mode's syntax
    table.
