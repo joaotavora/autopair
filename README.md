@@ -37,16 +37,15 @@ prefer it to the following:
 ## Differences to smartparens
 
 Note in particular that [smartparens][smartparens] claims in its
-README that it provides "all the basic funcionality of autopair". *I
+README that it provides "the basic funcionality [of autopair]". *I
 don't know why* this claim is made, since at time of writing:
 
-1. it does *not* setup for any mode according to the mode's syntax
-   table.
-2. it does *not* attempt to automatically-balance parentheses
+1. it does *not* automatically set itself up for any mode according 
+   to the mode's syntax table.
+2. it does *not* attempt to automatically balance parentheses
 
 Autopair provides these things out-of-the-box. Smartparens provides
-other features, that I personally use [Yasnippet][yasnippet] to
-achieve.
+other features, that I personally use [Yasnippet][yasnippet] for.
 
 ## Upcoming `electric-pair-mode` in Emacs 24.4
 
