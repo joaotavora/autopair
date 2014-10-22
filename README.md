@@ -11,6 +11,8 @@ language's syntax table which characters to pair, skip or delete. It
 should work even with extensions that redefine such keys. It also
 works with [YASnippet][yasnippet], another package I maintain.
 
+**Important: in Emacs 24.4 you can try `electric-pair-mode` as an alternative to autopair. See [below][2]**
+
 # Installation and basic use:
 
 To try it out, download the
@@ -47,13 +49,15 @@ don't know why* this claim is made, since at time of writing:
 Autopair provides these things out-of-the-box. Smartparens provides
 other features, that I personally use [Yasnippet][yasnippet] for.
 
-## Upcoming `electric-pair-mode` in Emacs 24.4
+## `electric-pair-mode` in Emacs 24.4
 
 `electric-pair-mode` is a minor mode in Emacs 24.3, but it's not very
-useful or widely used. In upcoming Emacs 24.4, `electric-pair-mode`
-minor-mode has been rewritten and much improved. It **supersedes
-autopair** in functionality and general all-around Emacs integration,
-and I recommend you use it instead.
+useful or widely used. In Emacs 24.4, `electric-pair-mode`
+minor-mode is much improved and actually **supersedes autopair** in 
+functionality and general all-around Emacs integration, and I recommend 
+you use it instead.
+
+
 
 # Neat tricks
 
@@ -210,5 +214,6 @@ autopaired and in which places would a closing brace be
 autoskipped. Quote pairing tries to support similar "intelligence".
 
 [1]: https://code.google.com/p/autopair/issues/list?can=1&q=status%3AWorkaround&colspec=ID+Type+Status+Priority+Milestone+Owner+Summary&cells=tiles
+[2]: https://github.com/capitaomorte/autopair#electric-pair-mode-in-emacs-244
 [smartparens]: https://github.com/Fuco1/smartparens
 [yasnippet]: https://github.com/capitaomorte/yasnippet
