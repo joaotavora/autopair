@@ -4,8 +4,8 @@
 
 ;; Author: Joao Tavora <joaotavora [at] gmail.com>
 ;; Keywords: convenience, emulations
-;; X-URL: http://autopair.googlecode.com
-;; URL: http://autopair.googlecode.com
+;; X-URL: https://github.com/capitaomorte/autopair
+;; URL: https://github.com/capitaomorte/autopair
 ;; EmacsWiki: AutoPairs
 ;; Package-Requires: ((cl-lib "0.3"))
 ;; Version: 0.6.1
