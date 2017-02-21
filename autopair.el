@@ -394,13 +394,19 @@ been turned on before the major-mode hooks kicked in).
 
 We want this advice to only kick in the *second* call to
 `autopair-global-mode-enable-in-buffers'."
+
+Also it is possible for the user to bind `autopair-dont-activate' in
+a major mode hook, but `autopair-mode' will have already been turned on
+by the global mode, so we can disable it here to respect `autopair-dont-activate'."
     (dolist (buf autopair-global-mode-buffers)
       (when (buffer-live-p buf)
         (with-current-buffer buf
-          (when (and autopair-mode
-                     (not autopair--global-mode-emacs24-hack-flag))
-            (autopair--set-emulation-bindings)
-            (set (make-local-variable 'autopair--global-mode-emacs24-hack-flag) t)))))))
+          (when autopair-mode
+            (if (boundp 'autopair-dont-activate)
+                (autopair-mode -1)
+              (when (not autopair--global-mode-emacs24-hack-flag)
+                (autopair--set-emulation-bindings)
+                (set (make-local-variable 'autopair--global-mode-emacs24-hack-flag) t)))))))))
 
 (defun autopair-on ()
   (unless (or buffer-read-only
